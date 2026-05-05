@@ -146,7 +146,7 @@ const FinancialPage = () => {
           </p>
         ) : summary ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <StatCard
                 title="A Receber (Pendente)"
                 value={summary.expectedIncome}
@@ -164,6 +164,18 @@ const FinancialPage = () => {
                 value={summary.cashflow}
                 icon={DollarSign}
                 positive={summary.cashflow >= 0}
+              />
+              <StatCard
+                title="Lucro Projetado"
+                value={summary.projectedProfit}
+                icon={TrendingUp}
+                positive={summary.projectedProfit >= 0}
+              />
+              <StatCard
+                title="Fluxo com Lucro"
+                value={summary.projectedProfitCashflow}
+                icon={DollarSign}
+                positive={summary.projectedProfitCashflow >= 0}
               />
             </div>
 

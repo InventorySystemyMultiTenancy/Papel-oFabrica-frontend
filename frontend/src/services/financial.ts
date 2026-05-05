@@ -19,6 +19,8 @@ export interface CashflowSummary {
   expectedIncome: number;
   expectedExpenses: number;
   cashflow: number;
+  projectedProfit: number;
+  projectedProfitCashflow: number;
   receivablesByMonth: Array<{ month: string; amount: number }>;
 }
 
@@ -41,7 +43,8 @@ const toRecord = (v: unknown): Record<string, unknown> | null => {
   return v as Record<string, unknown>;
 };
 
-const toStr = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
+const toStr = (v: unknown, fallback = "") =>
+  typeof v === "string" ? v : fallback;
 const toNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -87,6 +90,8 @@ const normalizeCashflow = (raw: unknown): CashflowSummary | null => {
     expectedIncome: toNum(item.expectedIncome),
     expectedExpenses: toNum(item.expectedExpenses),
     cashflow: toNum(item.cashflow),
+    projectedProfit: toNum(item.projectedProfit),
+    projectedProfitCashflow: toNum(item.projectedProfitCashflow),
     receivablesByMonth: byMonth,
   };
 };
@@ -94,30 +99,43 @@ const normalizeCashflow = (raw: unknown): CashflowSummary | null => {
 export const getCashflow = async (): Promise<CashflowSummary> => {
   const payload = await request<unknown>("/financial/cashflow");
   const normalized = normalizeCashflow(payload);
-  if (!normalized) throw new Error("Resposta inválida ao buscar fluxo de caixa.");
+  if (!normalized)
+    throw new Error("Resposta inválida ao buscar fluxo de caixa.");
   return normalized;
 };
 
-export const listReceivables = async (orderId: string): Promise<AccountReceivable[]> => {
-  const payload = await request<unknown>(`/financial/orders/${orderId}/receivables`);
+export const listReceivables = async (
+  orderId: string,
+): Promise<AccountReceivable[]> => {
+  const payload = await request<unknown>(
+    `/financial/orders/${orderId}/receivables`,
+  );
   return parseCollection<unknown>(payload)
     .map(normalizeReceivable)
     .filter((x): x is AccountReceivable => x !== null)
     .sort((a, b) => a.installment - b.installment);
 };
 
-export const generateInstallments = async (input: GenerateInstallmentsInput): Promise<AccountReceivable[]> => {
-  const payload = await request<unknown>("/financial/receivables/installments", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export const generateInstallments = async (
+  input: GenerateInstallmentsInput,
+): Promise<AccountReceivable[]> => {
+  const payload = await request<unknown>(
+    "/financial/receivables/installments",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
   return parseCollection<unknown>(payload)
     .map(normalizeReceivable)
     .filter((x): x is AccountReceivable => x !== null)
     .sort((a, b) => a.installment - b.installment);
 };
 
-export const updateReceivable = async (id: string, input: UpdateReceivableInput): Promise<AccountReceivable> => {
+export const updateReceivable = async (
+  id: string,
+  input: UpdateReceivableInput,
+): Promise<AccountReceivable> => {
   const payload = await request<unknown>(`/financial/receivables/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),

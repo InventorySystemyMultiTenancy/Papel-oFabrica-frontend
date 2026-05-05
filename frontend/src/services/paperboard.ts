@@ -8,12 +8,28 @@ export interface PaperboardConfig {
   height: number;
   gramatura: number;
   quantity: number;
+  sheetsPerBundle: number | null;
+  sheetUnitCost: number | null;
+  cuttingCostPerKg: number | null;
+  creasingCostPerKg: number | null;
+  lossPercentage: number;
+  markupPercentage: number;
   usesFullSheet: boolean;
   outsourcedCut: boolean;
   isFirstPurchase: boolean;
   clicheCost: number | null;
   clichePrice: number | null;
   area: number;
+  packageArea: number;
+  totalArea: number;
+  totalSheets: number;
+  totalBundles: number;
+  materialCost: number;
+  cuttingCost: number;
+  creasingCost: number;
+  lossCost: number;
+  clicheAppliedCost: number;
+  suggestedPrice: number;
   estimatedCost: number;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +41,12 @@ export interface PaperboardConfigInput {
   height: number;
   gramatura: number;
   quantity: number;
+  sheetsPerBundle?: number | null;
+  sheetUnitCost?: number | null;
+  cuttingCostPerKg?: number | null;
+  creasingCostPerKg?: number | null;
+  lossPercentage?: number;
+  markupPercentage?: number;
   usesFullSheet?: boolean;
   outsourcedCut?: boolean;
   isFirstPurchase?: boolean;
@@ -37,12 +59,14 @@ const toRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>;
 };
 
-const toStr = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
+const toStr = (v: unknown, fallback = "") =>
+  typeof v === "string" ? v : fallback;
 const toNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
-const toBool = (v: unknown, fallback = false) => (typeof v === "boolean" ? v : fallback);
+const toBool = (v: unknown, fallback = false) =>
+  typeof v === "boolean" ? v : fallback;
 const toNumOrNull = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
   const n = Number(v);
@@ -63,24 +87,47 @@ const normalize = (raw: unknown): PaperboardConfig | null => {
     height: toNum(item.height),
     gramatura: toNum(item.gramatura),
     quantity: toNum(item.quantity),
+    sheetsPerBundle: toNumOrNull(item.sheetsPerBundle),
+    sheetUnitCost: toNumOrNull(item.sheetUnitCost),
+    cuttingCostPerKg: toNumOrNull(item.cuttingCostPerKg),
+    creasingCostPerKg: toNumOrNull(item.creasingCostPerKg),
+    lossPercentage: toNum(item.lossPercentage),
+    markupPercentage: toNum(item.markupPercentage, 35),
     usesFullSheet: toBool(item.usesFullSheet),
     outsourcedCut: toBool(item.outsourcedCut),
     isFirstPurchase: toBool(item.isFirstPurchase),
     clicheCost: toNumOrNull(item.clicheCost),
     clichePrice: toNumOrNull(item.clichePrice),
     area: toNum(item.area),
+    packageArea: toNum(item.packageArea),
+    totalArea: toNum(item.totalArea),
+    totalSheets: toNum(item.totalSheets),
+    totalBundles: toNum(item.totalBundles),
+    materialCost: toNum(item.materialCost),
+    cuttingCost: toNum(item.cuttingCost),
+    creasingCost: toNum(item.creasingCost),
+    lossCost: toNum(item.lossCost),
+    clicheAppliedCost: toNum(item.clicheAppliedCost),
+    suggestedPrice: toNum(item.suggestedPrice),
     estimatedCost: toNum(item.estimatedCost),
     createdAt: toStr(item.createdAt),
     updatedAt: toStr(item.updatedAt),
   };
 };
 
-export const getPaperboardConfig = async (budgetId: string): Promise<PaperboardConfig | null> => {
+export const getPaperboardConfig = async (
+  budgetId: string,
+): Promise<PaperboardConfig | null> => {
   try {
     const payload = await request<unknown>(`/budgets/${budgetId}/paperboard`);
     return normalize(payload);
   } catch (error: unknown) {
-    if (error && typeof error === "object" && "status" in error && (error as { status: number }).status === 404) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      (error as { status: number }).status === 404
+    ) {
       return null;
     }
     throw error;
@@ -96,10 +143,15 @@ export const upsertPaperboardConfig = async (
     body: JSON.stringify(input),
   });
   const normalized = normalize(payload);
-  if (!normalized) throw new Error("Resposta inválida ao salvar configuração de papelão.");
+  if (!normalized)
+    throw new Error("Resposta inválida ao salvar configuração de papelão.");
   return normalized;
 };
 
-export const deletePaperboardConfig = async (budgetId: string): Promise<void> => {
-  await request<unknown>(`/budgets/${budgetId}/paperboard`, { method: "DELETE" });
+export const deletePaperboardConfig = async (
+  budgetId: string,
+): Promise<void> => {
+  await request<unknown>(`/budgets/${budgetId}/paperboard`, {
+    method: "DELETE",
+  });
 };

@@ -198,7 +198,7 @@ export default function AccountsPayablePage() {
 
         {/* Resumo */}
         {summary && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="border border-border rounded-lg p-4 bg-card">
               <p className="text-xs text-muted-foreground uppercase">
                 Pendentes
@@ -219,6 +219,26 @@ export default function AccountsPayablePage() {
               <p className="text-xs text-muted-foreground uppercase">Pagas</p>
               <p className="text-xl font-bold text-green-600">
                 {formatCurrency(summary.totalPaid)}
+              </p>
+            </div>
+            <div className="border border-border rounded-lg p-4 bg-card">
+              <p className="text-xs text-muted-foreground uppercase">
+                Saldo Lucro x Contas
+              </p>
+              <p
+                className={`text-xl font-bold ${summary.projectedProfitBalance >= 0 ? "text-green-600" : "text-destructive"}`}
+              >
+                {formatCurrency(summary.projectedProfitBalance)}
+              </p>
+            </div>
+            <div className="border border-border rounded-lg p-4 bg-card">
+              <p className="text-xs text-muted-foreground uppercase">
+                Cobertura do Lucro
+              </p>
+              <p className="text-xl font-bold text-primary">
+                {Number.isFinite(summary.projectedProfitCoverage)
+                  ? `${(summary.projectedProfitCoverage * 100).toFixed(1)}%`
+                  : "∞"}
               </p>
             </div>
           </div>

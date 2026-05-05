@@ -30,6 +30,8 @@ export interface PayableSummary {
   totalPending: number;
   totalPaid: number;
   totalOverdue: number;
+  projectedProfitCoverage: number;
+  projectedProfitBalance: number;
 }
 
 const VALID_CATEGORIES: PayableCategory[] = [
@@ -93,6 +95,8 @@ export async function getPayableSummary(): Promise<PayableSummary> {
     totalPending: toNum(data?.totalPending),
     totalPaid: toNum(data?.totalPaid),
     totalOverdue: toNum(data?.totalOverdue),
+    projectedProfitCoverage: toNum(data?.projectedProfitCoverage),
+    projectedProfitBalance: toNum(data?.projectedProfitBalance),
   };
 }
 

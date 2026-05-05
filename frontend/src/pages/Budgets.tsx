@@ -34,6 +34,7 @@ import {
   upsertPaperboardConfig,
   deletePaperboardConfig,
 } from "@/services/paperboard";
+import { useAuth } from "@/auth/AuthProvider";
 import { Plus, Trash2 } from "lucide-react";
 
 type MaterialInputMode = "existing" | "new";
@@ -66,9 +67,9 @@ const formatStatus = (status: BudgetRow["status"]) => {
 const formatCategory = (category: BudgetCategory) => {
   switch (category) {
     case "arquitetonico":
-      return "Projeto arquitetonico";
+      return "Corte e vinco";
     case "executivo":
-      return "Projeto executivo";
+      return "Produção e expedição";
     default:
       return category;
   }
@@ -94,7 +95,8 @@ const blobToDataUrl = (blob: Blob) =>
       }
     };
 
-    reader.onerror = () => reject(new Error("Falha ao carregar logo para PDF."));
+    reader.onerror = () =>
+      reject(new Error("Falha ao carregar logo para PDF."));
     reader.readAsDataURL(blob);
   });
 
@@ -131,25 +133,34 @@ type ProposalSectionLine = {
 };
 
 const PROPOSAL_DESCRIPTION_PLACEHOLDER = [
-  "Arquitetura:",
-  "  - Projeto conforme layout aprovado.",
-  "  - A.R.T do sistema de deteccao de incendio.",
-  "  - Compatibilizacao com projeto eletrico.",
+  "Papelão:",
+  "  - Produção em C x L x A conforme necessidade do cliente.",
+  "  - Definição de corte, vinco e acabamento.",
+  "  - Avaliação de perda técnica por aproveitamento de chapa.",
 ].join("\n");
 
 const PROPOSAL_NOTES_PLACEHOLDER = [
-  "Alvenaria:",
-  "  - Demolicao completa do forro existente.",
-  "  - Instalacao de forro drywall novo.",
-  "  - Pintura final conforme projeto aprovado.",
+  "Observações:",
+  "  - Material pode ser produzido internamente ou com corte terceirizado.",
+  "  - Informar se há uso de chapa inteira para múltiplos projetos.",
+  "  - Informar riscos de atraso e impacto no prazo de entrega.",
 ].join("\n");
 
 const DEFAULT_BUDGET_PDF_PAYMENT_TERMS = [
-  "Pagamento: 50% fechamento e assinatura de contrato 50% restante a serem pagos 30 dias apos inicio da obra.",
-  "Prazo previsto para entrega: 60 dias. Proposta valida por 5 dias.",
+  "Pagamento: Ato + boleto em 15/30/45 dias (conforme negociação).",
+  "Prazo de pagamento e entrega sujeitos a ajuste por atraso logístico ou operacional.",
+  "Proposta válida por 10 dias úteis.",
 ].join("\n");
 
-const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 15;
+const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 10;
+
+const PAYMENT_TERMS_PRESETS = [
+  "Ato",
+  "Boleto 15 dias",
+  "Boleto 30 dias",
+  "Boleto 45 dias",
+  "Ato + boleto 15/30/45 dias",
+].join("\n");
 
 const DEFAULT_ARCHITECTURE_LINES: ProposalSectionLine[] = [
   { text: "Projeto ou laudo conforme layout aprovado.", indentLevel: 0 },
@@ -161,7 +172,10 @@ const DEFAULT_ARCHITECTURE_LINES: ProposalSectionLine[] = [
 const DEFAULT_ALVENARIA_LINES: ProposalSectionLine[] = [
   { text: "Demolicao e preparacao da area existente.", indentLevel: 0 },
   { text: "Instalacoes de base conforme projeto executivo.", indentLevel: 0 },
-  { text: "Acabamentos finais de acordo com a aprovacao do cliente.", indentLevel: 0 },
+  {
+    text: "Acabamentos finais de acordo com a aprovacao do cliente.",
+    indentLevel: 0,
+  },
 ];
 
 const parseProposalSectionLines = (
@@ -299,7 +313,9 @@ const findClientByName = (clientsCatalog: Client[], clientName: string) => {
     return undefined;
   }
 
-  return clientsCatalog.find((client) => normalizeName(client.name) === normalized);
+  return clientsCatalog.find(
+    (client) => normalizeName(client.name) === normalized,
+  );
 };
 
 const buildClientAddress = (client: Client | undefined) => {
@@ -310,11 +326,17 @@ const buildClientAddress = (client: Client | undefined) => {
   const streetLine = [client.street, client.number].filter(Boolean).join(", ");
   const districtLine = [
     client.neighborhood,
-    client.city && client.state ? `${client.city}/${client.state}` : client.city || client.state,
+    client.city && client.state
+      ? `${client.city}/${client.state}`
+      : client.city || client.state,
   ]
     .filter(Boolean)
     .join(" - ");
-  const trailing = [client.complement, districtLine, client.postalCode ? `CEP ${client.postalCode}` : ""]
+  const trailing = [
+    client.complement,
+    districtLine,
+    client.postalCode ? `CEP ${client.postalCode}` : "",
+  ]
     .filter(Boolean)
     .join(" • ");
 
@@ -376,7 +398,12 @@ const extractExpenseDepartmentsFieldErrors = (error: unknown) => {
 
     const item = value as Record<string, unknown>;
     candidates.push({
-      path: typeof item.path === "string" ? item.path : typeof item.field === "string" ? item.field : undefined,
+      path:
+        typeof item.path === "string"
+          ? item.path
+          : typeof item.field === "string"
+            ? item.field
+            : undefined,
       message:
         typeof item.message === "string"
           ? item.message
@@ -394,7 +421,8 @@ const extractExpenseDepartmentsFieldErrors = (error: unknown) => {
     record.details.forEach(collectCandidate);
   }
 
-  const expensePathRegex = /expense(?:_|)departments?\[(\d+)\]\.(name|sector|amount)/i;
+  const expensePathRegex =
+    /expense(?:_|)departments?\[(\d+)\]\.(name|sector|amount)/i;
 
   candidates.forEach((candidate) => {
     if (!candidate.path) {
@@ -408,7 +436,8 @@ const extractExpenseDepartmentsFieldErrors = (error: unknown) => {
     }
 
     const [, index, field] = match;
-    output[`${index}-${field.toLowerCase()}`] = candidate.message || "Campo invalido.";
+    output[`${index}-${field.toLowerCase()}`] =
+      candidate.message || "Campo invalido.";
   });
 
   return output;
@@ -437,7 +466,12 @@ const extractApplicableCostsFieldErrors = (error: unknown) => {
 
     const item = value as Record<string, unknown>;
     candidates.push({
-      path: typeof item.path === "string" ? item.path : typeof item.field === "string" ? item.field : undefined,
+      path:
+        typeof item.path === "string"
+          ? item.path
+          : typeof item.field === "string"
+            ? item.field
+            : undefined,
       message:
         typeof item.message === "string"
           ? item.message
@@ -469,7 +503,8 @@ const extractApplicableCostsFieldErrors = (error: unknown) => {
     }
 
     const [, index, field] = match;
-    output[`${index}-${field.toLowerCase()}`] = candidate.message || "Campo invalido.";
+    output[`${index}-${field.toLowerCase()}`] =
+      candidate.message || "Campo invalido.";
   });
 
   return output;
@@ -520,7 +555,9 @@ const extractStatusFieldError = (error: unknown) => {
   }
 
   const statusError = candidates.find(
-    (candidate) => typeof candidate.path === "string" && /(^|\.)status$/i.test(candidate.path),
+    (candidate) =>
+      typeof candidate.path === "string" &&
+      /(^|\.)status$/i.test(candidate.path),
   );
 
   return statusError?.message || "";
@@ -574,7 +611,9 @@ const createEmptyApplicableCost = (): BudgetApplicableCostRow => ({
   amount: 0,
 });
 
-const formatExpenseDepartmentSuggestion = (department: ExpenseDepartmentCatalogItem) =>
+const formatExpenseDepartmentSuggestion = (
+  department: ExpenseDepartmentCatalogItem,
+) =>
   `${department.name} - ${department.sector} (${formatCurrency(department.defaultAmount)})`;
 
 const getStockBadge = (stockQuantity: number) => {
@@ -591,24 +630,42 @@ const getStockBadge = (stockQuantity: number) => {
   };
 };
 
-const mapBudgetFromApi = (budget: ApiBudget, clientsCatalog: Client[] = []): BudgetRow => {
+const mapBudgetFromApi = (
+  budget: ApiBudget,
+  clientsCatalog: Client[] = [],
+): BudgetRow => {
   const items = budget.materials.map(mapBudgetItemFromApi);
-  const expenseDepartments = budget.expenseDepartments.map(mapBudgetExpenseDepartmentFromApi);
-  const applicableCosts = (budget.applicableCosts || []).map(mapBudgetApplicableCostFromApi);
-  const materialCost = items.reduce((sum, item) => sum + item.subtotal, 0);
-  const applicableCostsFromList = applicableCosts.reduce((sum, cost) => sum + cost.amount, 0);
-  const costsApplicableValueFromApi = Number(
-    budget.financialSummary?.costsApplicableValue ?? budget.costsApplicableValue,
+  const expenseDepartments = budget.expenseDepartments.map(
+    mapBudgetExpenseDepartmentFromApi,
   );
-  const hasCostsApplicableValueFromApi = Number.isFinite(costsApplicableValueFromApi);
+  const applicableCosts = (budget.applicableCosts || []).map(
+    mapBudgetApplicableCostFromApi,
+  );
+  const materialCost = items.reduce((sum, item) => sum + item.subtotal, 0);
+  const applicableCostsFromList = applicableCosts.reduce(
+    (sum, cost) => sum + cost.amount,
+    0,
+  );
+  const costsApplicableValueFromApi = Number(
+    budget.financialSummary?.costsApplicableValue ??
+      budget.costsApplicableValue,
+  );
+  const hasCostsApplicableValueFromApi = Number.isFinite(
+    costsApplicableValueFromApi,
+  );
   const costsApplicableValue = hasCostsApplicableValueFromApi
     ? Math.max(0, costsApplicableValueFromApi)
     : Number.isFinite(Number(budget.financialSummary?.applicableCostsCost))
       ? Math.max(0, Number(budget.financialSummary?.applicableCostsCost))
       : applicableCostsFromList;
-  const expenseDepartmentsCost = Number.isFinite(Number(budget.financialSummary?.expenseDepartmentsCost))
+  const expenseDepartmentsCost = Number.isFinite(
+    Number(budget.financialSummary?.expenseDepartmentsCost),
+  )
     ? Math.max(0, Number(budget.financialSummary?.expenseDepartmentsCost))
-    : expenseDepartments.reduce((sum, department) => sum + department.amount, 0);
+    : expenseDepartments.reduce(
+        (sum, department) => sum + department.amount,
+        0,
+      );
   const applicableCostsCost = costsApplicableValue;
   const apiTotalCost = Number(budget.totalCost);
   const apiLaborCost = Number(budget.laborCost);
@@ -618,13 +675,17 @@ const mapBudgetFromApi = (budget: ApiBudget, clientsCatalog: Client[] = []): Bud
     : Math.max(
         0,
         Number.isFinite(apiTotalCost)
-          ? apiTotalCost - materialCost - expenseDepartmentsCost - applicableCostsCost
+          ? apiTotalCost -
+              materialCost -
+              expenseDepartmentsCost -
+              applicableCostsCost
           : 0,
       );
   const totalCost = Number.isFinite(apiTotalCost)
     ? Math.max(0, apiTotalCost)
     : materialCost + laborCost + expenseDepartmentsCost + applicableCostsCost;
-  const profitMargin = totalCost > 0 ? Math.max(0, (finalPrice - totalCost) / totalCost) : 0;
+  const profitMargin =
+    totalCost > 0 ? Math.max(0, (finalPrice - totalCost) / totalCost) : 0;
 
   const linkedClient = findClientByName(clientsCatalog, budget.clientName);
   const costsAppliedAt =
@@ -632,7 +693,9 @@ const mapBudgetFromApi = (budget: ApiBudget, clientsCatalog: Client[] = []): Bud
   const costsAppliedValue = Math.max(
     0,
     Number(
-      budget.financialSummary?.costsAppliedValue ?? budget.costsAppliedValue ?? 0,
+      budget.financialSummary?.costsAppliedValue ??
+        budget.costsAppliedValue ??
+        0,
     ) || 0,
   );
   const remainingCostToApply = Math.max(
@@ -640,14 +703,19 @@ const mapBudgetFromApi = (budget: ApiBudget, clientsCatalog: Client[] = []): Bud
     Number(budget.financialSummary?.remainingCostToApply ?? 0) || 0,
   );
   const validityBusinessDays =
-    Number.isFinite(Number(budget.validityBusinessDays)) && Number(budget.validityBusinessDays) > 0
+    Number.isFinite(Number(budget.validityBusinessDays)) &&
+    Number(budget.validityBusinessDays) > 0
       ? Math.trunc(Number(budget.validityBusinessDays))
       : DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS;
-  const elapsedBusinessDays = Math.max(0, Math.trunc(Number(budget.elapsedBusinessDays) || 0));
-  const remainingValidityBusinessDays =
-    Number.isFinite(Number(budget.remainingValidityBusinessDays))
-      ? Math.max(0, Math.trunc(Number(budget.remainingValidityBusinessDays)))
-      : Math.max(0, validityBusinessDays - elapsedBusinessDays);
+  const elapsedBusinessDays = Math.max(
+    0,
+    Math.trunc(Number(budget.elapsedBusinessDays) || 0),
+  );
+  const remainingValidityBusinessDays = Number.isFinite(
+    Number(budget.remainingValidityBusinessDays),
+  )
+    ? Math.max(0, Math.trunc(Number(budget.remainingValidityBusinessDays)))
+    : Math.max(0, validityBusinessDays - elapsedBusinessDays);
   const isExpired =
     typeof budget.isExpired === "boolean"
       ? budget.isExpired
@@ -660,10 +728,11 @@ const mapBudgetFromApi = (budget: ApiBudget, clientsCatalog: Client[] = []): Bud
     category: budget.category,
     description: budget.description,
     status: budget.status,
-    estimatedDeliveryBusinessDays:
-      Number.isFinite(Number(budget.estimatedDeliveryBusinessDays))
-        ? Math.max(0, Math.trunc(Number(budget.estimatedDeliveryBusinessDays)))
-        : null,
+    estimatedDeliveryBusinessDays: Number.isFinite(
+      Number(budget.estimatedDeliveryBusinessDays),
+    )
+      ? Math.max(0, Math.trunc(Number(budget.estimatedDeliveryBusinessDays)))
+      : null,
     validityBusinessDays,
     elapsedBusinessDays,
     remainingValidityBusinessDays,
@@ -709,35 +778,24 @@ interface ContractClause {
   content: string;
 }
 
-const DEFAULT_CONTRACT_CLAUSES: Array<Pick<ContractClause, "title" | "content">> = [
+const DEFAULT_CONTRACT_CLAUSES: Array<
+  Pick<ContractClause, "title" | "content">
+> = [
   {
     title: "CLÁUSULA 1 — DO OBJETO",
     content: [
-      "O objeto deste contrato consiste na execução dos seguintes serviços:",
-      "• Projeto de Arquitetura",
-      "• Projeto Executivo",
-      "• Projeto Elétrico",
-      "• Projeto Hidrossanitário",
-      "• ARTs de todos os projetos e da execução",
-      "• Estrutura metálica em metalon 100x100 galvanizado, conforme projeto a ser apresentado",
-      "• Piso cimentício",
-      "• Acabamento de piso em porcelanato 30x30",
-      "• Telhas modelo sanduíche, com pintura interna a definir conforme projeto",
-      "• Iluminação completa conforme projeto",
-      "• Acabamento interno em pintura, conforme projeto a ser aprovado",
-      "• Pintura da estrutura metálica",
-      "• Parede de fundo do quiosque (parte externa) em ACM, com revestimento em adesivo",
-      "• Parede de fundo do quiosque (parte interna) em ACM, com desenvolvimento de armários suspensos",
-      "• Passarela externa em lona marrom",
-      "• Fechamentos laterais e frontais em ACM, conforme projeto a ser aprovado",
-      "• Contorno frontal e caixa em granito",
-      "• Fechamentos laterais e frontais com pintura na cor Azul Tiffany",
-      "• Elétrica completa: iluminação, tomadas, interruptores e quadro elétrico, conforme projeto a ser aprovado pelo Mall",
-      "• Comunicação visual completa, conforme orientação e aprovação da marca",
+      "O objeto deste contrato consiste no fornecimento de materiais e serviços para embalagens de papelão:",
+      "• Definição técnica do produto (C x L x A)",
+      "• Especificação de gramatura e estrutura de chapa",
+      "• Processos de corte e vinco",
+      "• Produção interna e/ou terceirização de corte, quando aplicável",
+      "• Controle de quantidade por pedido e expedição",
+      "• Apuração de perdas técnicas por aproveitamento de chapa",
+      "• Itens adicionais de acabamento conforme orçamento aprovado",
       "",
       "Não incluso:",
-      "• Equipamentos eletroeletrônicos",
-      "• Equipamentos próprios da operação do cliente",
+      "• Serviços não descritos expressamente no orçamento",
+      "• Alterações técnicas sem aprovação formal",
     ].join("\n"),
   },
   {
@@ -745,8 +803,8 @@ const DEFAULT_CONTRACT_CLAUSES: Array<Pick<ContractClause, "title" | "content">>
     content: [
       "A CONTRATANTE pagará à CONTRATADA o valor unitário de {{valor_contrato}}.",
       "O pagamento deverá ser efetuado da seguinte forma:",
-      "(a) 50% (cinquenta por cento) na aprovação do projeto e início da produção;",
-      "(b) 50% (cinquenta por cento) dois dias antes da entrega e instalação do quiosque no endereço da obra.",
+      "(a) Parcela no ato da confirmação do pedido;",
+      "(b) Demais parcelas em boleto, conforme prazo negociado (15/30/45 dias).",
     ].join("\n"),
   },
   {
@@ -766,7 +824,8 @@ const DEFAULT_CONTRACT_CLAUSES: Array<Pick<ContractClause, "title" | "content">>
   },
 ];
 
-const createClauseId = () => `clause-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const createClauseId = () =>
+  `clause-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const createDefaultContractClauses = (): ContractClause[] =>
   DEFAULT_CONTRACT_CLAUSES.map((clause) => ({
@@ -798,7 +857,10 @@ const formatLongDate = (inputDate: string) => {
 };
 
 const replaceContractPlaceholders = (value: string, contractValue: number) =>
-  value.replace(/\{\{\s*valor_contrato\s*\}\}/gi, formatCurrency(contractValue));
+  value.replace(
+    /\{\{\s*valor_contrato\s*\}\}/gi,
+    formatCurrency(contractValue),
+  );
 
 const createInitialBudgetForm = () => ({
   clientId: "",
@@ -807,7 +869,7 @@ const createInitialBudgetForm = () => ({
   description: "",
   estimatedDeliveryBusinessDays: "",
   notes: "",
-  paymentTerms: DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
+  paymentTerms: PAYMENT_TERMS_PRESETS,
   laborCost: 0,
   costsApplicableValue: 0,
   profitMargin: 0.35,
@@ -822,7 +884,7 @@ const createInitialDetailForm = () => ({
   description: "",
   estimatedDeliveryBusinessDays: "",
   notes: "",
-  paymentTerms: DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
+  paymentTerms: PAYMENT_TERMS_PRESETS,
   status: "draft" as BudgetStatus,
   totalPrice: 0,
   costsApplicableValue: 0,
@@ -832,6 +894,8 @@ const createInitialDetailForm = () => ({
 });
 
 const BudgetsPage = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [data, setData] = useState<BudgetRow[]>([]);
   const [modal, setModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -843,7 +907,8 @@ const BudgetsPage = () => {
   const [preApprovingId, setPreApprovingId] = useState<string | null>(null);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [contractModalOpen, setContractModalOpen] = useState(false);
-  const [selectedBudgetForContract, setSelectedBudgetForContract] = useState<BudgetRow | null>(null);
+  const [selectedBudgetForContract, setSelectedBudgetForContract] =
+    useState<BudgetRow | null>(null);
   const [isGeneratingContract, setIsGeneratingContract] = useState(false);
   const [contractFormError, setContractFormError] = useState("");
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -855,24 +920,46 @@ const BudgetsPage = () => {
   const [productsCatalog, setProductsCatalog] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [productsError, setProductsError] = useState("");
-  const [expenseDepartmentsCatalog, setExpenseDepartmentsCatalog] = useState<ExpenseDepartmentCatalogItem[]>([]);
-  const [isLoadingExpenseDepartmentsCatalog, setIsLoadingExpenseDepartmentsCatalog] = useState(false);
-  const [expenseDepartmentsCatalogError, setExpenseDepartmentsCatalogError] = useState("");
+  const [expenseDepartmentsCatalog, setExpenseDepartmentsCatalog] = useState<
+    ExpenseDepartmentCatalogItem[]
+  >([]);
+  const [
+    isLoadingExpenseDepartmentsCatalog,
+    setIsLoadingExpenseDepartmentsCatalog,
+  ] = useState(false);
+  const [expenseDepartmentsCatalogError, setExpenseDepartmentsCatalogError] =
+    useState("");
   const [expenseDepartmentsSearch, setExpenseDepartmentsSearch] = useState("");
-  const [detailExpenseDepartmentsSearch, setDetailExpenseDepartmentsSearch] = useState("");
-  const [expenseDepartmentsFieldErrors, setExpenseDepartmentsFieldErrors] = useState<Record<string, string>>({});
-  const [detailExpenseDepartmentsFieldErrors, setDetailExpenseDepartmentsFieldErrors] = useState<Record<string, string>>({});
-  const [applicableCostsFieldErrors, setApplicableCostsFieldErrors] = useState<Record<string, string>>({});
-  const [detailApplicableCostsFieldErrors, setDetailApplicableCostsFieldErrors] = useState<Record<string, string>>({});
-  const [selectedToPreApprove, setSelectedToPreApprove] = useState<BudgetRow | null>(null);
-  const [selectedToApprove, setSelectedToApprove] = useState<BudgetRow | null>(null);
+  const [detailExpenseDepartmentsSearch, setDetailExpenseDepartmentsSearch] =
+    useState("");
+  const [expenseDepartmentsFieldErrors, setExpenseDepartmentsFieldErrors] =
+    useState<Record<string, string>>({});
+  const [
+    detailExpenseDepartmentsFieldErrors,
+    setDetailExpenseDepartmentsFieldErrors,
+  ] = useState<Record<string, string>>({});
+  const [applicableCostsFieldErrors, setApplicableCostsFieldErrors] = useState<
+    Record<string, string>
+  >({});
+  const [
+    detailApplicableCostsFieldErrors,
+    setDetailApplicableCostsFieldErrors,
+  ] = useState<Record<string, string>>({});
+  const [selectedToPreApprove, setSelectedToPreApprove] =
+    useState<BudgetRow | null>(null);
+  const [selectedToApprove, setSelectedToApprove] = useState<BudgetRow | null>(
+    null,
+  );
   const [approvalError, setApprovalError] = useState("");
-  const [approvalDetails, setApprovalDetails] = useState<ApproveBudgetStockDetail[]>([]);
+  const [approvalDetails, setApprovalDetails] = useState<
+    ApproveBudgetStockDetail[]
+  >([]);
   const [clientsCatalog, setClientsCatalog] = useState<Client[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
   const [clientsError, setClientsError] = useState("");
   // Paperboard config state
-  const [paperboardConfig, setPaperboardConfig] = useState<PaperboardConfig | null>(null);
+  const [paperboardConfig, setPaperboardConfig] =
+    useState<PaperboardConfig | null>(null);
   const [isPaperboardSectionOpen, setIsPaperboardSectionOpen] = useState(false);
   const [isLoadingPaperboard, setIsLoadingPaperboard] = useState(false);
   const [isSavingPaperboard, setIsSavingPaperboard] = useState(false);
@@ -883,6 +970,12 @@ const BudgetsPage = () => {
     height: 0,
     gramatura: 0,
     quantity: 0,
+    sheetsPerBundle: undefined,
+    sheetUnitCost: undefined,
+    cuttingCostPerKg: undefined,
+    creasingCostPerKg: undefined,
+    lossPercentage: 0,
+    markupPercentage: 35,
     usesFullSheet: false,
     outsourcedCut: false,
     isFirstPurchase: false,
@@ -895,7 +988,9 @@ const BudgetsPage = () => {
     scope: "create" | "detail";
     previousStatus: BudgetStatus;
   } | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<"all" | BudgetCategory>("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | BudgetCategory>(
+    "all",
+  );
   const [newItem, setNewItem] = useState(createEmptyMaterialInput);
   const [detailNewItem, setDetailNewItem] = useState(createEmptyMaterialInput);
   const [contractForm, setContractForm] = useState<ContractFormState>({
@@ -918,11 +1013,17 @@ const BudgetsPage = () => {
     setRequestError("");
 
     try {
-      const budgets = await listBudgets(activeCategoryFilter === "all" ? undefined : activeCategoryFilter);
-      setData(budgets.map((budget) => mapBudgetFromApi(budget, availableClients)));
+      const budgets = await listBudgets(
+        activeCategoryFilter === "all" ? undefined : activeCategoryFilter,
+      );
+      setData(
+        budgets.map((budget) => mapBudgetFromApi(budget, availableClients)),
+      );
     } catch (error) {
       setData([]);
-      setRequestError(normalizeBudgetError(error, "Não foi possível carregar os orçamentos."));
+      setRequestError(
+        normalizeBudgetError(error, "Não foi possível carregar os orçamentos."),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -938,7 +1039,12 @@ const BudgetsPage = () => {
       return clients;
     } catch (error) {
       setClientsCatalog([]);
-      setClientsError(normalizeBudgetError(error, "Nao foi possivel carregar clientes para o formulario."));
+      setClientsError(
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel carregar clientes para o formulario.",
+        ),
+      );
       return [] as Client[];
     } finally {
       setIsLoadingClients(false);
@@ -965,7 +1071,10 @@ const BudgetsPage = () => {
           return budget;
         }
 
-        const linkedClient = findClientByName(clientsCatalog, budget.clientName);
+        const linkedClient = findClientByName(
+          clientsCatalog,
+          budget.clientName,
+        );
 
         if (!linkedClient) {
           return budget;
@@ -988,7 +1097,12 @@ const BudgetsPage = () => {
       setProductsCatalog(products);
     } catch (error) {
       setProductsCatalog([]);
-      setProductsError(normalizeBudgetError(error, "Nao foi possivel carregar produtos para o formulario."));
+      setProductsError(
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel carregar produtos para o formulario.",
+        ),
+      );
     } finally {
       setIsLoadingProducts(false);
     }
@@ -1004,7 +1118,10 @@ const BudgetsPage = () => {
     } catch (error) {
       setExpenseDepartmentsCatalog([]);
       setExpenseDepartmentsCatalogError(
-        normalizeBudgetError(error, "Nao foi possivel carregar departamentos de gasto."),
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel carregar departamentos de gasto.",
+        ),
       );
     } finally {
       setIsLoadingExpenseDepartmentsCatalog(false);
@@ -1047,7 +1164,10 @@ const BudgetsPage = () => {
     return () => window.clearTimeout(timeoutId);
   }, [detailExpenseDepartmentsSearch, detailModalOpen]);
 
-  const requestStatusChange = (scope: "create" | "detail", nextStatus: BudgetStatus) => {
+  const requestStatusChange = (
+    scope: "create" | "detail",
+    nextStatus: BudgetStatus,
+  ) => {
     if (nextStatus !== "pre_approved") {
       if (scope === "create") {
         setForm((current) => ({ ...current, status: nextStatus }));
@@ -1073,11 +1193,17 @@ const BudgetsPage = () => {
 
   const cancelPreApprovedStatusChange = () => {
     if (pendingStatusChange?.scope === "create") {
-      setForm((current) => ({ ...current, status: pendingStatusChange.previousStatus }));
+      setForm((current) => ({
+        ...current,
+        status: pendingStatusChange.previousStatus,
+      }));
     }
 
     if (pendingStatusChange?.scope === "detail") {
-      setDetailForm((current) => ({ ...current, status: pendingStatusChange.previousStatus }));
+      setDetailForm((current) => ({
+        ...current,
+        status: pendingStatusChange.previousStatus,
+      }));
     }
 
     setPendingStatusChange(null);
@@ -1105,7 +1231,11 @@ const BudgetsPage = () => {
   };
 
   const openPreApproveModal = (budget: BudgetRow) => {
-    if (preApprovingId || budget.status === "pre_approved" || budget.status === "approved") {
+    if (
+      preApprovingId ||
+      budget.status === "pre_approved" ||
+      budget.status === "approved"
+    ) {
       return;
     }
 
@@ -1116,7 +1246,10 @@ const BudgetsPage = () => {
     if (shouldUseDetailCostsApplicableValue) {
       setSelectedToPreApprove({
         ...budget,
-        costsApplicableValue: Math.max(0, Number(detailForm.costsApplicableValue) || 0),
+        costsApplicableValue: Math.max(
+          0,
+          Number(detailForm.costsApplicableValue) || 0,
+        ),
       });
       return;
     }
@@ -1151,7 +1284,10 @@ const BudgetsPage = () => {
         detailModalOpen && selectedBudget?.id === budgetId;
 
       if (shouldUseDetailCostsApplicableValue) {
-        preApprovePayload.costsApplicableValue = Math.max(0, Number(detailForm.costsApplicableValue) || 0);
+        preApprovePayload.costsApplicableValue = Math.max(
+          0,
+          Number(detailForm.costsApplicableValue) || 0,
+        );
       } else {
         preApprovePayload.costsApplicableValue = Math.max(
           0,
@@ -1164,7 +1300,9 @@ const BudgetsPage = () => {
         clientsCatalog,
       );
 
-      setData((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setData((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
 
       setSelectedBudget((current) => {
         if (!current || current.id !== updated.id) {
@@ -1189,7 +1327,12 @@ const BudgetsPage = () => {
       closePreApproveModal();
       await loadBudgetsFromApi();
     } catch (error) {
-      setRequestError(normalizeBudgetError(error, "Nao foi possivel pre-aprovar o orçamento."));
+      setRequestError(
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel pre-aprovar o orçamento.",
+        ),
+      );
     } finally {
       setPreApprovingId(null);
     }
@@ -1219,8 +1362,12 @@ const BudgetsPage = () => {
     const unit = newItem.unit.trim() || "unidade";
     const isExistingMode = newItem.mode === "existing";
 
-    const product = isExistingMode ? productsCatalog.find((p) => p.id === newItem.productId) : undefined;
-    const productName = isExistingMode ? product?.name || "" : newItem.productName.trim();
+    const product = isExistingMode
+      ? productsCatalog.find((p) => p.id === newItem.productId)
+      : undefined;
+    const productName = isExistingMode
+      ? product?.name || ""
+      : newItem.productName.trim();
 
     if (!productName) {
       setFormError(
@@ -1268,7 +1415,9 @@ const BudgetsPage = () => {
     const product = isExistingMode
       ? productsCatalog.find((p) => p.id === detailNewItem.productId)
       : undefined;
-    const productName = isExistingMode ? product?.name || "" : detailNewItem.productName.trim();
+    const productName = isExistingMode
+      ? product?.name || ""
+      : detailNewItem.productName.trim();
 
     if (!productName) {
       setDetailError(
@@ -1314,13 +1463,19 @@ const BudgetsPage = () => {
   };
 
   const removeItem = (idx: number) => {
-    setForm((current) => ({ ...current, items: current.items.filter((_, i) => i !== idx) }));
+    setForm((current) => ({
+      ...current,
+      items: current.items.filter((_, i) => i !== idx),
+    }));
   };
 
   const addExpenseDepartment = () => {
     setForm((current) => ({
       ...current,
-      expenseDepartments: [...current.expenseDepartments, createEmptyExpenseDepartment()],
+      expenseDepartments: [
+        ...current.expenseDepartments,
+        createEmptyExpenseDepartment(),
+      ],
     }));
   };
 
@@ -1329,7 +1484,10 @@ const BudgetsPage = () => {
       return;
     }
 
-    const nextDepartments = [...selectedBudget.expenseDepartments, createEmptyExpenseDepartment()];
+    const nextDepartments = [
+      ...selectedBudget.expenseDepartments,
+      createEmptyExpenseDepartment(),
+    ];
 
     setSelectedBudget((current) =>
       current
@@ -1339,13 +1497,19 @@ const BudgetsPage = () => {
           }
         : current,
     );
-    setDetailForm((current) => ({ ...current, expenseDepartments: nextDepartments }));
+    setDetailForm((current) => ({
+      ...current,
+      expenseDepartments: nextDepartments,
+    }));
   };
 
   const addApplicableCost = () => {
     setForm((current) => ({
       ...current,
-      applicableCosts: [...current.applicableCosts, createEmptyApplicableCost()],
+      applicableCosts: [
+        ...current.applicableCosts,
+        createEmptyApplicableCost(),
+      ],
     }));
   };
 
@@ -1354,7 +1518,10 @@ const BudgetsPage = () => {
       return;
     }
 
-    const nextApplicableCosts = [...selectedBudget.applicableCosts, createEmptyApplicableCost()];
+    const nextApplicableCosts = [
+      ...selectedBudget.applicableCosts,
+      createEmptyApplicableCost(),
+    ];
 
     setSelectedBudget((current) =>
       current
@@ -1364,13 +1531,18 @@ const BudgetsPage = () => {
           }
         : current,
     );
-    setDetailForm((current) => ({ ...current, applicableCosts: nextApplicableCosts }));
+    setDetailForm((current) => ({
+      ...current,
+      applicableCosts: nextApplicableCosts,
+    }));
   };
 
   const removeExpenseDepartment = (index: number) => {
     setForm((current) => ({
       ...current,
-      expenseDepartments: current.expenseDepartments.filter((_, departmentIndex) => departmentIndex !== index),
+      expenseDepartments: current.expenseDepartments.filter(
+        (_, departmentIndex) => departmentIndex !== index,
+      ),
     }));
     setExpenseDepartmentsFieldErrors((current) => {
       const nextEntries = Object.entries(current).filter(
@@ -1390,7 +1562,10 @@ const BudgetsPage = () => {
         (_, departmentIndex) => departmentIndex !== index,
       );
 
-      setDetailForm((detailCurrent) => ({ ...detailCurrent, expenseDepartments: nextDepartments }));
+      setDetailForm((detailCurrent) => ({
+        ...detailCurrent,
+        expenseDepartments: nextDepartments,
+      }));
 
       return {
         ...current,
@@ -1409,7 +1584,9 @@ const BudgetsPage = () => {
   const removeApplicableCost = (index: number) => {
     setForm((current) => ({
       ...current,
-      applicableCosts: current.applicableCosts.filter((_, costIndex) => costIndex !== index),
+      applicableCosts: current.applicableCosts.filter(
+        (_, costIndex) => costIndex !== index,
+      ),
     }));
 
     setApplicableCostsFieldErrors((current) => {
@@ -1430,7 +1607,10 @@ const BudgetsPage = () => {
         (_, costIndex) => costIndex !== index,
       );
 
-      setDetailForm((detailCurrent) => ({ ...detailCurrent, applicableCosts: nextApplicableCosts }));
+      setDetailForm((detailCurrent) => ({
+        ...detailCurrent,
+        applicableCosts: nextApplicableCosts,
+      }));
 
       return {
         ...current,
@@ -1453,30 +1633,33 @@ const BudgetsPage = () => {
   ) => {
     setForm((current) => ({
       ...current,
-      expenseDepartments: current.expenseDepartments.map((department, departmentIndex) => {
-        if (departmentIndex !== index) {
-          return department;
-        }
+      expenseDepartments: current.expenseDepartments.map(
+        (department, departmentIndex) => {
+          if (departmentIndex !== index) {
+            return department;
+          }
 
-        if (field === "amount") {
+          if (field === "amount") {
+            return {
+              ...department,
+              amount: Math.max(0, Number(value) || 0),
+            };
+          }
+
+          if (field === "expenseDepartmentId") {
+            return {
+              ...department,
+              expenseDepartmentId:
+                typeof value === "string" && value ? value : undefined,
+            };
+          }
+
           return {
             ...department,
-            amount: Math.max(0, Number(value) || 0),
+            [field]: typeof value === "string" ? value : String(value),
           };
-        }
-
-        if (field === "expenseDepartmentId") {
-          return {
-            ...department,
-            expenseDepartmentId: typeof value === "string" && value ? value : undefined,
-          };
-        }
-
-        return {
-          ...department,
-          [field]: typeof value === "string" ? value : String(value),
-        };
-      }),
+        },
+      ),
     }));
 
     setExpenseDepartmentsFieldErrors((current) => {
@@ -1499,30 +1682,33 @@ const BudgetsPage = () => {
       return;
     }
 
-    const nextDepartments = selectedBudget.expenseDepartments.map((department, departmentIndex) => {
-      if (departmentIndex !== index) {
-        return department;
-      }
+    const nextDepartments = selectedBudget.expenseDepartments.map(
+      (department, departmentIndex) => {
+        if (departmentIndex !== index) {
+          return department;
+        }
 
-      if (field === "amount") {
+        if (field === "amount") {
+          return {
+            ...department,
+            amount: Math.max(0, Number(value) || 0),
+          };
+        }
+
+        if (field === "expenseDepartmentId") {
+          return {
+            ...department,
+            expenseDepartmentId:
+              typeof value === "string" && value ? value : undefined,
+          };
+        }
+
         return {
           ...department,
-          amount: Math.max(0, Number(value) || 0),
+          [field]: typeof value === "string" ? value : String(value),
         };
-      }
-
-      if (field === "expenseDepartmentId") {
-        return {
-          ...department,
-          expenseDepartmentId: typeof value === "string" && value ? value : undefined,
-        };
-      }
-
-      return {
-        ...department,
-        [field]: typeof value === "string" ? value : String(value),
-      };
-    });
+      },
+    );
 
     setSelectedBudget((current) =>
       current
@@ -1532,7 +1718,10 @@ const BudgetsPage = () => {
           }
         : current,
     );
-    setDetailForm((current) => ({ ...current, expenseDepartments: nextDepartments }));
+    setDetailForm((current) => ({
+      ...current,
+      expenseDepartments: nextDepartments,
+    }));
 
     setDetailExpenseDepartmentsFieldErrors((current) => {
       if (!current[`${index}-${field}`]) {
@@ -1567,7 +1756,8 @@ const BudgetsPage = () => {
         if (field === "applicableCostId") {
           return {
             ...cost,
-            applicableCostId: typeof value === "string" && value ? value : undefined,
+            applicableCostId:
+              typeof value === "string" && value ? value : undefined,
           };
         }
 
@@ -1598,30 +1788,33 @@ const BudgetsPage = () => {
       return;
     }
 
-    const nextApplicableCosts = selectedBudget.applicableCosts.map((cost, costIndex) => {
-      if (costIndex !== index) {
-        return cost;
-      }
+    const nextApplicableCosts = selectedBudget.applicableCosts.map(
+      (cost, costIndex) => {
+        if (costIndex !== index) {
+          return cost;
+        }
 
-      if (field === "amount") {
+        if (field === "amount") {
+          return {
+            ...cost,
+            amount: Math.max(0, Number(value) || 0),
+          };
+        }
+
+        if (field === "applicableCostId") {
+          return {
+            ...cost,
+            applicableCostId:
+              typeof value === "string" && value ? value : undefined,
+          };
+        }
+
         return {
           ...cost,
-          amount: Math.max(0, Number(value) || 0),
+          [field]: typeof value === "string" ? value : String(value),
         };
-      }
-
-      if (field === "applicableCostId") {
-        return {
-          ...cost,
-          applicableCostId: typeof value === "string" && value ? value : undefined,
-        };
-      }
-
-      return {
-        ...cost,
-        [field]: typeof value === "string" ? value : String(value),
-      };
-    });
+      },
+    );
 
     setSelectedBudget((current) =>
       current
@@ -1631,7 +1824,10 @@ const BudgetsPage = () => {
           }
         : current,
     );
-    setDetailForm((current) => ({ ...current, applicableCosts: nextApplicableCosts }));
+    setDetailForm((current) => ({
+      ...current,
+      applicableCosts: nextApplicableCosts,
+    }));
 
     setDetailApplicableCostsFieldErrors((current) => {
       if (!current[`${index}-${field}`]) {
@@ -1644,8 +1840,13 @@ const BudgetsPage = () => {
     });
   };
 
-  const applyCatalogToExpenseDepartment = (index: number, catalogId: string) => {
-    const selectedCatalog = expenseDepartmentsCatalog.find((department) => department.id === catalogId);
+  const applyCatalogToExpenseDepartment = (
+    index: number,
+    catalogId: string,
+  ) => {
+    const selectedCatalog = expenseDepartmentsCatalog.find(
+      (department) => department.id === catalogId,
+    );
 
     if (!selectedCatalog) {
       return;
@@ -1653,7 +1854,34 @@ const BudgetsPage = () => {
 
     setForm((current) => ({
       ...current,
-      expenseDepartments: current.expenseDepartments.map((department, departmentIndex) =>
+      expenseDepartments: current.expenseDepartments.map(
+        (department, departmentIndex) =>
+          departmentIndex === index
+            ? {
+                expenseDepartmentId: selectedCatalog.id,
+                name: selectedCatalog.name,
+                sector: selectedCatalog.sector,
+                amount: selectedCatalog.defaultAmount,
+              }
+            : department,
+      ),
+    }));
+  };
+
+  const applyCatalogToDetailExpenseDepartment = (
+    index: number,
+    catalogId: string,
+  ) => {
+    const selectedCatalog = expenseDepartmentsCatalog.find(
+      (department) => department.id === catalogId,
+    );
+
+    if (!selectedCatalog || !selectedBudget) {
+      return;
+    }
+
+    const nextDepartments = selectedBudget.expenseDepartments.map(
+      (department, departmentIndex) =>
         departmentIndex === index
           ? {
               expenseDepartmentId: selectedCatalog.id,
@@ -1662,26 +1890,6 @@ const BudgetsPage = () => {
               amount: selectedCatalog.defaultAmount,
             }
           : department,
-      ),
-    }));
-  };
-
-  const applyCatalogToDetailExpenseDepartment = (index: number, catalogId: string) => {
-    const selectedCatalog = expenseDepartmentsCatalog.find((department) => department.id === catalogId);
-
-    if (!selectedCatalog || !selectedBudget) {
-      return;
-    }
-
-    const nextDepartments = selectedBudget.expenseDepartments.map((department, departmentIndex) =>
-      departmentIndex === index
-        ? {
-            expenseDepartmentId: selectedCatalog.id,
-            name: selectedCatalog.name,
-            sector: selectedCatalog.sector,
-            amount: selectedCatalog.defaultAmount,
-          }
-        : department,
     );
 
     setSelectedBudget((current) =>
@@ -1692,10 +1900,15 @@ const BudgetsPage = () => {
           }
         : current,
     );
-    setDetailForm((current) => ({ ...current, expenseDepartments: nextDepartments }));
+    setDetailForm((current) => ({
+      ...current,
+      expenseDepartments: nextDepartments,
+    }));
   };
 
-  const validateExpenseDepartments = (departments: BudgetExpenseDepartmentRow[]) => {
+  const validateExpenseDepartments = (
+    departments: BudgetExpenseDepartmentRow[],
+  ) => {
     const errors: Record<string, string> = {};
 
     departments.forEach((department, index) => {
@@ -1749,10 +1962,18 @@ const BudgetsPage = () => {
     0,
   );
 
-  const costsApplicableValue = Math.max(0, Number(form.costsApplicableValue) || 0);
+  const costsApplicableValue = Math.max(
+    0,
+    Number(form.costsApplicableValue) || 0,
+  );
 
-  const totalCostWithExpenses = calc.materialCost + form.laborCost + expenseDepartmentsCost + costsApplicableValue;
-  const finalPriceWithExpenses = totalCostWithExpenses * (1 + form.profitMargin);
+  const totalCostWithExpenses =
+    calc.materialCost +
+    form.laborCost +
+    expenseDepartmentsCost +
+    costsApplicableValue;
+  const finalPriceWithExpenses =
+    totalCostWithExpenses * (1 + form.profitMargin);
 
   const detailMaterialCost = (selectedBudget?.items || []).reduce(
     (sum, item) => sum + (Number(item.subtotal) || 0),
@@ -1763,13 +1984,23 @@ const BudgetsPage = () => {
     (sum, department) => sum + (Number(department.amount) || 0),
     0,
   );
-  const detailApplicableCostsCost = Math.max(0, Number(detailForm.costsApplicableValue) || 0);
+  const detailApplicableCostsCost = Math.max(
+    0,
+    Number(detailForm.costsApplicableValue) || 0,
+  );
 
   const detailLaborCost = Math.max(0, Number(selectedBudget?.laborCost) || 0);
-  const detailProfitMargin = Math.max(0, Number(selectedBudget?.profitMargin) || 0);
+  const detailProfitMargin = Math.max(
+    0,
+    Number(selectedBudget?.profitMargin) || 0,
+  );
   const detailTotalCostWithExpenses =
-    detailMaterialCost + detailLaborCost + detailExpenseDepartmentsCost + detailApplicableCostsCost;
-  const detailFinalPriceWithExpenses = detailTotalCostWithExpenses * (1 + detailProfitMargin);
+    detailMaterialCost +
+    detailLaborCost +
+    detailExpenseDepartmentsCost +
+    detailApplicableCostsCost;
+  const detailFinalPriceWithExpenses =
+    detailTotalCostWithExpenses * (1 + detailProfitMargin);
 
   const closeCreateModal = () => {
     setModal(false);
@@ -1782,7 +2013,9 @@ const BudgetsPage = () => {
     setExpenseDepartmentsFieldErrors({});
     setApplicableCostsFieldErrors({});
     setNewItem(createEmptyMaterialInput());
-    setPendingStatusChange((current) => (current?.scope === "create" ? null : current));
+    setPendingStatusChange((current) =>
+      current?.scope === "create" ? null : current,
+    );
   };
 
   const saveBudget = async () => {
@@ -1819,13 +2052,22 @@ const BudgetsPage = () => {
     }
 
     if (Number.isNaN(parsedEstimatedDeliveryBusinessDays)) {
-      setFormError("estimatedDeliveryBusinessDays deve ser um número inteiro maior que zero.");
+      setFormError(
+        "estimatedDeliveryBusinessDays deve ser um número inteiro maior que zero.",
+      );
       return;
     }
 
-    const normalizedFormCostsApplicableValue = Number(form.costsApplicableValue ?? 0);
-    if (!Number.isFinite(normalizedFormCostsApplicableValue) || normalizedFormCostsApplicableValue < 0) {
-      setFormError("Informe um custo aplicavel valido (maior ou igual a zero).");
+    const normalizedFormCostsApplicableValue = Number(
+      form.costsApplicableValue ?? 0,
+    );
+    if (
+      !Number.isFinite(normalizedFormCostsApplicableValue) ||
+      normalizedFormCostsApplicableValue < 0
+    ) {
+      setFormError(
+        "Informe um custo aplicavel valido (maior ou igual a zero).",
+      );
       return;
     }
 
@@ -1834,7 +2076,9 @@ const BudgetsPage = () => {
       return;
     }
 
-    const departmentErrors = validateExpenseDepartments(form.expenseDepartments);
+    const departmentErrors = validateExpenseDepartments(
+      form.expenseDepartments,
+    );
     const applicableCostsErrors = validateApplicableCosts(form.applicableCosts);
 
     if (Object.keys(departmentErrors).length > 0) {
@@ -1865,7 +2109,9 @@ const BudgetsPage = () => {
         totalPrice: finalPriceWithExpenses,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
-        paymentTerms: form.paymentTerms.trim() ? form.paymentTerms.trim() : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
+        paymentTerms: form.paymentTerms.trim()
+          ? form.paymentTerms.trim()
+          : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
         status: form.status,
         materials: form.items.map((item) => {
           const payloadItem = {
@@ -1897,7 +2143,10 @@ const BudgetsPage = () => {
         })),
       });
 
-      setData((current) => [mapBudgetFromApi(created, clientsCatalog), ...current]);
+      setData((current) => [
+        mapBudgetFromApi(created, clientsCatalog),
+        ...current,
+      ]);
       await Promise.all([loadBudgetsFromApi(), loadProductsForForm()]);
       closeCreateModal();
     } catch (error) {
@@ -1917,7 +2166,9 @@ const BudgetsPage = () => {
         setStatusFieldError(apiStatusError);
       }
 
-      setFormError(normalizeBudgetError(error, "Não foi possível criar o orçamento."));
+      setFormError(
+        normalizeBudgetError(error, "Não foi possível criar o orçamento."),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -1930,7 +2181,10 @@ const BudgetsPage = () => {
     setIsLoadingDetail(true);
 
     try {
-      const budget = mapBudgetFromApi(await getBudgetById(budgetId), clientsCatalog);
+      const budget = mapBudgetFromApi(
+        await getBudgetById(budgetId),
+        clientsCatalog,
+      );
       setSelectedBudget(budget);
       setDetailForm({
         clientName: budget.clientName,
@@ -1944,7 +2198,10 @@ const BudgetsPage = () => {
         paymentTerms: budget.paymentTerms || DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
         status: budget.status,
         totalPrice: budget.finalPrice,
-        costsApplicableValue: Math.max(0, Number(budget.costsApplicableValue) || 0),
+        costsApplicableValue: Math.max(
+          0,
+          Number(budget.costsApplicableValue) || 0,
+        ),
         items: budget.items,
         expenseDepartments: budget.expenseDepartments,
         applicableCosts: budget.applicableCosts,
@@ -1954,9 +2211,16 @@ const BudgetsPage = () => {
     } catch (error) {
       setSelectedBudget(null);
       if (error instanceof ApiError && error.status === 404) {
-        setDetailError("Este orçamento não está mais disponível. Ele pode ter sido removido após expiração/rejeição.");
+        setDetailError(
+          "Este orçamento não está mais disponível. Ele pode ter sido removido após expiração/rejeição.",
+        );
       } else {
-        setDetailError(normalizeBudgetError(error, "Não foi possível carregar os detalhes do orçamento."));
+        setDetailError(
+          normalizeBudgetError(
+            error,
+            "Não foi possível carregar os detalhes do orçamento.",
+          ),
+        );
       }
     } finally {
       setIsLoadingDetail(false);
@@ -1973,7 +2237,9 @@ const BudgetsPage = () => {
     setDetailExpenseDepartmentsSearch("");
     setDetailExpenseDepartmentsFieldErrors({});
     setDetailApplicableCostsFieldErrors({});
-    setPendingStatusChange((current) => (current?.scope === "detail" ? null : current));
+    setPendingStatusChange((current) =>
+      current?.scope === "detail" ? null : current,
+    );
     setPaperboardConfig(null);
     setIsPaperboardSectionOpen(false);
     setPaperboardError("");
@@ -1992,6 +2258,12 @@ const BudgetsPage = () => {
           height: config.height,
           gramatura: config.gramatura,
           quantity: config.quantity,
+          sheetsPerBundle: config.sheetsPerBundle ?? undefined,
+          sheetUnitCost: config.sheetUnitCost ?? undefined,
+          cuttingCostPerKg: config.cuttingCostPerKg ?? undefined,
+          creasingCostPerKg: config.creasingCostPerKg ?? undefined,
+          lossPercentage: config.lossPercentage,
+          markupPercentage: config.markupPercentage,
           usesFullSheet: config.usesFullSheet,
           outsourcedCut: config.outsourcedCut,
           isFirstPurchase: config.isFirstPurchase,
@@ -1999,10 +2271,27 @@ const BudgetsPage = () => {
           clichePrice: config.clichePrice ?? undefined,
         });
       } else {
-        setPaperboardForm({ length: 0, width: 0, height: 0, gramatura: 0, quantity: 0, usesFullSheet: false, outsourcedCut: false, isFirstPurchase: false });
+        setPaperboardForm({
+          length: 0,
+          width: 0,
+          height: 0,
+          gramatura: 0,
+          quantity: 0,
+          sheetsPerBundle: undefined,
+          sheetUnitCost: undefined,
+          cuttingCostPerKg: undefined,
+          creasingCostPerKg: undefined,
+          lossPercentage: 0,
+          markupPercentage: 35,
+          usesFullSheet: false,
+          outsourcedCut: false,
+          isFirstPurchase: false,
+        });
       }
     } catch {
-      setPaperboardError("Não foi possível carregar a configuração de papelão.");
+      setPaperboardError(
+        "Não foi possível carregar a configuração de papelão.",
+      );
     } finally {
       setIsLoadingPaperboard(false);
     }
@@ -2010,14 +2299,25 @@ const BudgetsPage = () => {
 
   const savePaperboardConfig = async () => {
     if (!selectedBudget) return;
-    if (!paperboardForm.length || !paperboardForm.width || !paperboardForm.height || !paperboardForm.gramatura || !paperboardForm.quantity) {
-      setPaperboardError("Preencha todos os campos obrigatórios (dimensões, gramatura e quantidade).");
+    if (
+      !paperboardForm.length ||
+      !paperboardForm.width ||
+      !paperboardForm.height ||
+      !paperboardForm.gramatura ||
+      !paperboardForm.quantity
+    ) {
+      setPaperboardError(
+        "Preencha todos os campos obrigatórios (dimensões, gramatura e quantidade).",
+      );
       return;
     }
     setIsSavingPaperboard(true);
     setPaperboardError("");
     try {
-      const saved = await upsertPaperboardConfig(selectedBudget.id, paperboardForm);
+      const saved = await upsertPaperboardConfig(
+        selectedBudget.id,
+        paperboardForm,
+      );
       setPaperboardConfig(saved);
       setPaperboardError("");
     } catch {
@@ -2034,7 +2334,22 @@ const BudgetsPage = () => {
     try {
       await deletePaperboardConfig(selectedBudget.id);
       setPaperboardConfig(null);
-      setPaperboardForm({ length: 0, width: 0, height: 0, gramatura: 0, quantity: 0, usesFullSheet: false, outsourcedCut: false, isFirstPurchase: false });
+      setPaperboardForm({
+        length: 0,
+        width: 0,
+        height: 0,
+        gramatura: 0,
+        quantity: 0,
+        sheetsPerBundle: undefined,
+        sheetUnitCost: undefined,
+        cuttingCostPerKg: undefined,
+        creasingCostPerKg: undefined,
+        lossPercentage: 0,
+        markupPercentage: 35,
+        usesFullSheet: false,
+        outsourcedCut: false,
+        isFirstPurchase: false,
+      });
     } catch {
       setPaperboardError("Não foi possível remover a configuração de papelão.");
     } finally {
@@ -2081,22 +2396,37 @@ const BudgetsPage = () => {
     }
 
     if (Number.isNaN(parsedDetailEstimatedDeliveryBusinessDays)) {
-      setDetailError("estimatedDeliveryBusinessDays deve ser um número inteiro maior que zero.");
+      setDetailError(
+        "estimatedDeliveryBusinessDays deve ser um número inteiro maior que zero.",
+      );
       return;
     }
 
-    const normalizedDetailCostsApplicableValue = Number(detailForm.costsApplicableValue ?? 0);
-    if (!Number.isFinite(normalizedDetailCostsApplicableValue) || normalizedDetailCostsApplicableValue < 0) {
-      setDetailError("Informe um custo aplicavel valido (maior ou igual a zero).");
+    const normalizedDetailCostsApplicableValue = Number(
+      detailForm.costsApplicableValue ?? 0,
+    );
+    if (
+      !Number.isFinite(normalizedDetailCostsApplicableValue) ||
+      normalizedDetailCostsApplicableValue < 0
+    ) {
+      setDetailError(
+        "Informe um custo aplicavel valido (maior ou igual a zero).",
+      );
       return;
     }
 
-    const departmentErrors = validateExpenseDepartments(detailForm.expenseDepartments);
-    const applicableCostsErrors = validateApplicableCosts(detailForm.applicableCosts);
+    const departmentErrors = validateExpenseDepartments(
+      detailForm.expenseDepartments,
+    );
+    const applicableCostsErrors = validateApplicableCosts(
+      detailForm.applicableCosts,
+    );
 
     if (Object.keys(departmentErrors).length > 0) {
       setDetailExpenseDepartmentsFieldErrors(departmentErrors);
-      setDetailError("Revise os campos obrigatorios em departamentos de gasto.");
+      setDetailError(
+        "Revise os campos obrigatorios em departamentos de gasto.",
+      );
       return;
     }
 
@@ -2119,14 +2449,18 @@ const BudgetsPage = () => {
           category: detailForm.category,
           description: detailForm.description.trim(),
           deliveryDate: null,
-          estimatedDeliveryBusinessDays: parsedDetailEstimatedDeliveryBusinessDays,
+          estimatedDeliveryBusinessDays:
+            parsedDetailEstimatedDeliveryBusinessDays,
           notes: detailForm.notes.trim() ? detailForm.notes.trim() : null,
           paymentTerms: detailForm.paymentTerms.trim()
             ? detailForm.paymentTerms.trim()
             : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
           status: detailForm.status,
           totalPrice: detailFinalPriceWithExpenses,
-          costsApplicableValue: Math.max(0, Number(detailForm.costsApplicableValue) || 0),
+          costsApplicableValue: Math.max(
+            0,
+            Number(detailForm.costsApplicableValue) || 0,
+          ),
           materials: selectedBudget.items.map((item) => {
             const payloadItem = {
               productName: item.productName,
@@ -2144,12 +2478,14 @@ const BudgetsPage = () => {
 
             return payloadItem;
           }),
-          expenseDepartments: detailForm.expenseDepartments.map((department) => ({
-            expenseDepartmentId: department.expenseDepartmentId,
-            name: department.name.trim(),
-            sector: department.sector.trim(),
-            amount: Math.max(0, Number(department.amount) || 0),
-          })),
+          expenseDepartments: detailForm.expenseDepartments.map(
+            (department) => ({
+              expenseDepartmentId: department.expenseDepartmentId,
+              name: department.name.trim(),
+              sector: department.sector.trim(),
+              amount: Math.max(0, Number(department.amount) || 0),
+            }),
+          ),
           applicableCosts: detailForm.applicableCosts.map((cost) => ({
             applicableCostId: cost.applicableCostId,
             name: cost.name.trim(),
@@ -2159,7 +2495,9 @@ const BudgetsPage = () => {
         clientsCatalog,
       );
 
-      setData((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setData((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
       await Promise.all([loadBudgetsFromApi(), loadProductsForForm()]);
       closeDetailModal();
     } catch (error) {
@@ -2179,7 +2517,9 @@ const BudgetsPage = () => {
         setDetailStatusFieldError(apiStatusError);
       }
 
-      setDetailError(normalizeBudgetError(error, "Não foi possível atualizar o orçamento."));
+      setDetailError(
+        normalizeBudgetError(error, "Não foi possível atualizar o orçamento."),
+      );
     } finally {
       setIsUpdatingDetail(false);
     }
@@ -2197,8 +2537,13 @@ const BudgetsPage = () => {
     clearApprovalFeedback();
 
     try {
-      const approved = mapBudgetFromApi(await approveBudget(budgetId), clientsCatalog);
-      setData((current) => current.map((item) => (item.id === approved.id ? approved : item)));
+      const approved = mapBudgetFromApi(
+        await approveBudget(budgetId),
+        clientsCatalog,
+      );
+      setData((current) =>
+        current.map((item) => (item.id === approved.id ? approved : item)),
+      );
       closeApproveModal(true);
 
       dispatchInventoryDataChanged({
@@ -2214,7 +2559,9 @@ const BudgetsPage = () => {
         return;
       }
 
-      setApprovalError(normalizeBudgetError(error, "Não foi possível aprovar o orçamento."));
+      setApprovalError(
+        normalizeBudgetError(error, "Não foi possível aprovar o orçamento."),
+      );
     } finally {
       setApprovingId(null);
     }
@@ -2309,7 +2656,7 @@ const BudgetsPage = () => {
       pdf.setTextColor(0, 0, 0);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(15);
-      pdf.text("Mais Quiosque Galpao Producao", headerX, y + 8);
+      pdf.text("4D Papelao - Producao", headerX, y + 8);
 
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9.8);
@@ -2320,7 +2667,8 @@ const BudgetsPage = () => {
 
       const issueDate = normalizeDateOnly(budget.createdAt) || "-";
       const proposalTitle = `Proposta comercial: ${budget.clientName}`;
-      const proposalSubtitle = "Desenvolvimento, construcao e montagem de loja conforme projeto enviado previamente.";
+      const proposalSubtitle =
+        "Desenvolvimento e producao de embalagens de papelao conforme especificacoes aprovadas.";
 
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9.5);
@@ -2358,7 +2706,10 @@ const BudgetsPage = () => {
       const writeBulletLine = (line: ProposalSectionLine) => {
         const bulletX = marginX + 4 + line.indentLevel * 4;
         const textX = bulletX + 3;
-        const wrapped = pdf.splitTextToSize(line.text, contentWidth - (textX - marginX) - 2) as string[];
+        const wrapped = pdf.splitTextToSize(
+          line.text,
+          contentWidth - (textX - marginX) - 2,
+        ) as string[];
         const blockHeight = Math.max(4.2, wrapped.length * 3.8 + 0.8);
         ensureSpace(blockHeight + 0.8);
 
@@ -2369,8 +2720,14 @@ const BudgetsPage = () => {
         y += blockHeight;
       };
 
-      const architectureLines = parseProposalSectionLines(budget.description, DEFAULT_ARCHITECTURE_LINES);
-      const alvenariaLines = parseProposalSectionLines(budget.notes, DEFAULT_ALVENARIA_LINES);
+      const architectureLines = parseProposalSectionLines(
+        budget.description,
+        DEFAULT_ARCHITECTURE_LINES,
+      );
+      const alvenariaLines = parseProposalSectionLines(
+        budget.notes,
+        DEFAULT_ALVENARIA_LINES,
+      );
 
       writeSectionTitle("Arquitetura:");
       architectureLines.forEach(writeBulletLine);
@@ -2384,10 +2741,16 @@ const BudgetsPage = () => {
 
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8.8);
-      pdf.text(`Valor unitario: ${formatCurrency(budget.finalPrice)}`, marginX, y);
+      pdf.text(
+        `Valor unitario: ${formatCurrency(budget.finalPrice)}`,
+        marginX,
+        y,
+      );
 
       y += 5;
-      const validityStatusText = budget.isExpired ? "Expirado" : "Dentro da validade";
+      const validityStatusText = budget.isExpired
+        ? "Expirado"
+        : "Dentro da validade";
       const summaryLines = [
         `Prazo estimado de entrega: ${formatBusinessDaysLabel(budget.estimatedDeliveryBusinessDays)} (Após assinar contrato)`,
         `Validade do orçamento: ${budget.validityBusinessDays} dias uteis`,
@@ -2397,13 +2760,17 @@ const BudgetsPage = () => {
       ];
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
-      const summaryText = pdf.splitTextToSize(summaryLines.join("\n"), contentWidth) as string[];
+      const summaryText = pdf.splitTextToSize(
+        summaryLines.join("\n"),
+        contentWidth,
+      ) as string[];
       pdf.text(summaryText, marginX, y);
       y += summaryText.length * 3.8 + 2.5;
 
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8);
-      const paymentTermsText = budget.paymentTerms?.trim() || DEFAULT_BUDGET_PDF_PAYMENT_TERMS;
+      const paymentTermsText =
+        budget.paymentTerms?.trim() || DEFAULT_BUDGET_PDF_PAYMENT_TERMS;
       const paymentLines = pdf.splitTextToSize(
         paymentTermsText,
         contentWidth,
@@ -2430,12 +2797,18 @@ const BudgetsPage = () => {
       y += 4;
       pdf.text("+55 11 98327 0902", marginX, y);
       y += 4;
-      pdf.text("Escritorio: Av Cochoeiro Paulista, 17 Cidade Patriarca Cep 03551-000 Sao Paulo - SP", marginX, y);
+      pdf.text(
+        "Escritorio: Av Cochoeiro Paulista, 17 Cidade Patriarca Cep 03551-000 Sao Paulo - SP",
+        marginX,
+        y,
+      );
 
       const safeClientName = sanitizeFileName(budget.clientName) || "cliente";
       pdf.save(`orcamento-${budget.id}-${safeClientName}.pdf`);
     } catch {
-      window.alert("Não foi possível gerar o PDF deste orçamento. Tente novamente.");
+      window.alert(
+        "Não foi possível gerar o PDF deste orçamento. Tente novamente.",
+      );
     } finally {
       setGeneratingPdfId(null);
     }
@@ -2461,8 +2834,13 @@ const BudgetsPage = () => {
       return;
     }
 
-    if (contractForm.kioskWidthMeters <= 0 || contractForm.kioskDepthMeters <= 0) {
-      setContractFormError("Informe dimensões válidas para o quiosque.");
+    if (
+      contractForm.kioskWidthMeters <= 0 ||
+      contractForm.kioskDepthMeters <= 0
+    ) {
+      setContractFormError(
+        "Informe dimensões válidas para o projeto de papelão.",
+      );
       return;
     }
 
@@ -2472,7 +2850,9 @@ const BudgetsPage = () => {
     }
 
     if (contractForm.clauses.length === 0) {
-      setContractFormError("Adicione ao menos uma cláusula para gerar o contrato.");
+      setContractFormError(
+        "Adicione ao menos uma cláusula para gerar o contrato.",
+      );
       return;
     }
 
@@ -2509,10 +2889,16 @@ const BudgetsPage = () => {
         y = 16;
       };
 
-      const writeLine = (text: string, opts: { bold?: boolean; size?: number; indent?: number } = {}) => {
+      const writeLine = (
+        text: string,
+        opts: { bold?: boolean; size?: number; indent?: number } = {},
+      ) => {
         const { bold = false, size = 10, indent = 0 } = opts;
         const x = marginX + indent;
-        const wrapped = pdf.splitTextToSize(text, contentWidth - indent) as string[];
+        const wrapped = pdf.splitTextToSize(
+          text,
+          contentWidth - indent,
+        ) as string[];
         ensureSpace(wrapped.length * lineHeight + 1);
         pdf.setFont("helvetica", bold ? "bold" : "normal");
         pdf.setFontSize(size);
@@ -2562,27 +2948,41 @@ const BudgetsPage = () => {
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(10.8);
       pdf.text("CONTRATO DE PRESTACAO DE SERVICOS", titleX, y + 8);
-      pdf.text("DE MONTAGEM DE QUIOSQUE COMERCIAL", titleX, y + 14);
+      pdf.text("DE PRODUCAO DE EMBALAGENS DE PAPELAO", titleX, y + 14);
 
       y += logoH + 6;
       separator();
 
-      writeLine(`CONTRATANTE: ${contractForm.contratanteName}, inscrita no CPF/CNPJ sob n.o ____________, residente na cidade de ____________, doravante denominada simplesmente CONTRATANTE.`, { bold: true });
+      writeLine(
+        `CONTRATANTE: ${contractForm.contratanteName}, inscrita no CPF/CNPJ sob n.o ____________, residente na cidade de ____________, doravante denominada simplesmente CONTRATANTE.`,
+        { bold: true },
+      );
       addGap(2);
       separator();
 
-      writeLine("CONTRATADA: GIRA KIDS COMERCIO DE DOCES, BRINQUEDOS E JOGOS ELETRONICOS LTDA, pessoa juridica de direito privado, inscrita no CNPJ sob o n.o 07.313.928/0001-75, com sede na Avenida Cachoeira Paulista, 17 - Cidade Patriarca - Cep: 03551-000, doravante denominada simplesmente CONTRATADA.", { bold: true });
+      writeLine(
+        "CONTRATADA: GIRA KIDS COMERCIO DE DOCES, BRINQUEDOS E JOGOS ELETRONICOS LTDA, pessoa juridica de direito privado, inscrita no CNPJ sob o n.o 07.313.928/0001-75, com sede na Avenida Cachoeira Paulista, 17 - Cidade Patriarca - Cep: 03551-000, doravante denominada simplesmente CONTRATADA.",
+        { bold: true },
+      );
       addGap(2);
       separator();
 
       writeLine("Considerando que:", { bold: true });
       addGap(1);
-      writeLine("a) A CONTRATANTE deseja contratar os servicos da CONTRATADA para desenvolvimento, construcao e montagem de loja, conforme especificacoes deste instrumento.", { indent: 1 });
+      writeLine(
+        "a) A CONTRATANTE deseja contratar os servicos da CONTRATADA para desenvolvimento e producao de embalagens de papelao, conforme especificacoes deste instrumento.",
+        { indent: 1 },
+      );
       addGap(1);
-      writeLine("b) A CONTRATADA declara possuir expertise e capacidade tecnica para a execucao dos servicos ora contratados.", { indent: 1 });
+      writeLine(
+        "b) A CONTRATADA declara possuir expertise e capacidade tecnica para a execucao dos servicos ora contratados.",
+        { indent: 1 },
+      );
       addGap(2);
 
-      writeLine("As partes acima identificadas tem entre si justo e acordado o presente Contrato de Construcao e Montagem de Loja, mediante as seguintes clausulas e condicoes:");
+      writeLine(
+        "As partes acima identificadas tem entre si justo e acordado o presente Contrato de Producao de Embalagens de Papelao, mediante as seguintes clausulas e condicoes:",
+      );
       addGap(2);
 
       contractForm.clauses.forEach((clause, index) => {
@@ -2590,7 +2990,10 @@ const BudgetsPage = () => {
         writeLine(clauseTitle, { bold: true, size: 11 });
         addGap(1);
 
-        const processedContent = replaceContractPlaceholders(clause.content, contractForm.contractValue);
+        const processedContent = replaceContractPlaceholders(
+          clause.content,
+          contractForm.contractValue,
+        );
         const contentLines = processedContent.split(/\r?\n/);
 
         contentLines.forEach((rawLine) => {
@@ -2613,7 +3016,9 @@ const BudgetsPage = () => {
       });
 
       if (contractForm.projectAddress.trim()) {
-        writeLine(`Endereco da obra: ${contractForm.projectAddress.trim()}`, { bold: true });
+        writeLine(`Endereco da obra: ${contractForm.projectAddress.trim()}`, {
+          bold: true,
+        });
         addGap(2);
       }
 
@@ -2642,11 +3047,18 @@ const BudgetsPage = () => {
       pdf.text("GIRA KIDS COMERCIO DE DOCES", rightSignatureX, y);
       pdf.text("CONTRATADA", rightSignatureX, y + 4.2);
 
-      const safeClientName = sanitizeFileName(contractForm.operationName || selectedBudgetForContract.clientName) || "cliente";
-      pdf.save(`contrato-${selectedBudgetForContract.id}-${safeClientName}.pdf`);
+      const safeClientName =
+        sanitizeFileName(
+          contractForm.operationName || selectedBudgetForContract.clientName,
+        ) || "cliente";
+      pdf.save(
+        `contrato-${selectedBudgetForContract.id}-${safeClientName}.pdf`,
+      );
       closeContractModal();
     } catch {
-      setContractFormError("Não foi possível gerar o contrato em PDF. Tente novamente.");
+      setContractFormError(
+        "Não foi possível gerar o contrato em PDF. Tente novamente.",
+      );
     } finally {
       setIsGeneratingContract(false);
     }
@@ -2654,13 +3066,18 @@ const BudgetsPage = () => {
 
   const detailClientOptions = clientsCatalog.map((client) => ({
     value: client.name,
-    label: client.companyName ? `${client.name} • ${client.companyName}` : client.name,
+    label: client.companyName
+      ? `${client.name} • ${client.companyName}`
+      : client.name,
   }));
 
   const resolveItemStockStatus = (item: BudgetItemRow) => {
     const matchingProduct = item.productId
       ? productsCatalog.find((product) => product.id === item.productId)
-      : productsCatalog.find((product) => normalizeName(product.name) === normalizeName(item.productName));
+      : productsCatalog.find(
+          (product) =>
+            normalizeName(product.name) === normalizeName(item.productName),
+        );
 
     const stockQuantity = matchingProduct?.stockQuantity ?? 0;
     return getStockBadge(stockQuantity);
@@ -2672,8 +3089,13 @@ const BudgetsPage = () => {
         return current;
       }
 
-      const nextItems = current.items.filter((_, itemIndex) => itemIndex !== idx);
-      setDetailForm((detailCurrent) => ({ ...detailCurrent, items: nextItems }));
+      const nextItems = current.items.filter(
+        (_, itemIndex) => itemIndex !== idx,
+      );
+      setDetailForm((detailCurrent) => ({
+        ...detailCurrent,
+        items: nextItems,
+      }));
 
       return {
         ...current,
@@ -2682,7 +3104,12 @@ const BudgetsPage = () => {
     });
   };
 
-  if (detailForm.clientName && !detailClientOptions.some((option) => option.value === detailForm.clientName)) {
+  if (
+    detailForm.clientName &&
+    !detailClientOptions.some(
+      (option) => option.value === detailForm.clientName,
+    )
+  ) {
     detailClientOptions.unshift({
       value: detailForm.clientName,
       label: `${detailForm.clientName} (não cadastrado)`,
@@ -2712,16 +3139,27 @@ const BudgetsPage = () => {
       header: "Custo restante",
       render: (b: BudgetRow) => formatCurrency(b.remainingCostToApply),
     },
-    { key: "finalPrice", header: "Preço Final", mono: true, render: (b: BudgetRow) => `R$ ${b.finalPrice.toFixed(2)}` },
+    {
+      key: "finalPrice",
+      header: "Preço Final",
+      mono: true,
+      render: (b: BudgetRow) => `R$ ${b.finalPrice.toFixed(2)}`,
+    },
     {
       key: "estimatedDeliveryBusinessDays",
       header: "Prazo estimado",
       mono: true,
-      render: (b: BudgetRow) => formatBusinessDaysLabel(b.estimatedDeliveryBusinessDays),
+      render: (b: BudgetRow) =>
+        formatBusinessDaysLabel(b.estimatedDeliveryBusinessDays),
     },
-    { key: "status", header: "Status", render: (b: BudgetRow) => <StatusBadge status={b.status} /> },
     {
-      key: "actions", header: "",
+      key: "status",
+      header: "Status",
+      render: (b: BudgetRow) => <StatusBadge status={b.status} />,
+    },
+    {
+      key: "actions",
+      header: "",
       render: (b: BudgetRow) => (
         <div className="flex items-center gap-2">
           <button
@@ -2789,7 +3227,10 @@ const BudgetsPage = () => {
     <DashboardLayout
       title="Orçamentos"
       action={
-        <button onClick={openCreateModal} className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5">
+        <button
+          onClick={openCreateModal}
+          className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+        >
           <Plus className="h-3.5 w-3.5" /> NOVO ORÇAMENTO
         </button>
       }
@@ -2800,10 +3241,15 @@ const BudgetsPage = () => {
             label="Filtrar por categoria"
             as="select"
             value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value as "all" | BudgetCategory)}
+            onChange={(event) =>
+              setCategoryFilter(event.target.value as "all" | BudgetCategory)
+            }
             options={[
               { value: "all", label: "Todas as categorias" },
-              { value: "arquitetonico", label: formatCategory("arquitetonico") },
+              {
+                value: "arquitetonico",
+                label: formatCategory("arquitetonico"),
+              },
               { value: "executivo", label: formatCategory("executivo") },
             ]}
           />
@@ -2813,7 +3259,9 @@ const BudgetsPage = () => {
           <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
             <span>{requestError}</span>
             <button
-              onClick={() => void loadBudgetsFromApi(clientsCatalog, categoryFilter)}
+              onClick={() =>
+                void loadBudgetsFromApi(clientsCatalog, categoryFilter)
+              }
               className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
             >
               TENTAR NOVAMENTE
@@ -2827,374 +3275,590 @@ const BudgetsPage = () => {
           onRowClick={(row) => {
             void openBudgetDetail(row.id);
           }}
-          emptyMessage={isLoading ? "Carregando orçamentos..." : "Nenhum orçamento encontrado."}
+          emptyMessage={
+            isLoading
+              ? "Carregando orçamentos..."
+              : "Nenhum orçamento encontrado."
+          }
         />
       </div>
 
-      <Modal open={modal} onClose={closeCreateModal} title="Novo Orçamento" width="max-w-5xl">
+      <Modal
+        open={modal}
+        onClose={closeCreateModal}
+        title="Novo Orçamento"
+        width="max-w-5xl"
+      >
         <div className="flex max-h-[72dvh] flex-col">
           <div className="space-y-6 overflow-y-auto pr-1">
-          {clientsError && (
-            <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-              <span>{clientsError}</span>
-              <button
-                onClick={() => void loadClientsForForms()}
-                className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-              >
-                TENTAR NOVAMENTE
-              </button>
-            </div>
-          )}
+            {clientsError && (
+              <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                <span>{clientsError}</span>
+                <button
+                  onClick={() => void loadClientsForForms()}
+                  className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                >
+                  TENTAR NOVAMENTE
+                </button>
+              </div>
+            )}
 
-          <FormField
-            label="Cliente"
-            as="select"
-            value={form.clientId}
-            onChange={e => setForm({ ...form, clientId: e.target.value })}
-            options={clientsCatalog.map((client) => ({
-              value: client.id,
-              label: client.companyName ? `${client.name} • ${client.companyName}` : client.name,
-            }))}
-          />
-
-          <FormField
-            label="Categoria do orcamento"
-            as="select"
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value as BudgetCategory })}
-            options={[
-              { value: "arquitetonico", label: formatCategory("arquitetonico") },
-              { value: "executivo", label: formatCategory("executivo") },
-            ]}
-          />
-
-          <FormField
-            label="Status"
-            as="select"
-            value={form.status}
-            onChange={(e) => requestStatusChange("create", e.target.value as BudgetStatus)}
-            error={statusFieldError}
-            options={[
-              { value: "draft", label: "Rascunho" },
-              { value: "pre_approved", label: "Pre-aprovado (aplica somente custos aplicaveis)" },
-              { value: "approved", label: "Aprovado (oficial, aplica custos restantes)" },
-              { value: "pending", label: "Pendente (administrativo)" },
-              { value: "rejected", label: "Rejeitado (administrativo)" },
-            ]}
-          />
-
-          {!isLoadingClients && clientsCatalog.length === 0 && (
-            <p className="text-xs text-destructive">Nenhum cliente cadastrado no banco para selecionar.</p>
-          )}
-
-          <FormField
-            label="Descrição"
-            as="textarea"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder={PROPOSAL_DESCRIPTION_PLACEHOLDER}
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
-              label="Prazo estimado de entrega (dias úteis previstos)"
-              type="number"
-              min={1}
-              step="1"
-              value={form.estimatedDeliveryBusinessDays}
-              onChange={(e) => setForm({ ...form, estimatedDeliveryBusinessDays: e.target.value })}
+              label="Cliente"
+              as="select"
+              value={form.clientId}
+              onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+              options={clientsCatalog.map((client) => ({
+                value: client.id,
+                label: client.companyName
+                  ? `${client.name} • ${client.companyName}`
+                  : client.name,
+              }))}
             />
+
             <FormField
-              label="Observações"
+              label="Categoria do orcamento"
+              as="select"
+              value={form.category}
+              onChange={(e) =>
+                setForm({ ...form, category: e.target.value as BudgetCategory })
+              }
+              options={[
+                {
+                  value: "arquitetonico",
+                  label: formatCategory("arquitetonico"),
+                },
+                { value: "executivo", label: formatCategory("executivo") },
+              ]}
+            />
+
+            <FormField
+              label="Status"
+              as="select"
+              value={form.status}
+              onChange={(e) =>
+                requestStatusChange("create", e.target.value as BudgetStatus)
+              }
+              error={statusFieldError}
+              options={[
+                { value: "draft", label: "Rascunho" },
+                {
+                  value: "pre_approved",
+                  label: "Pre-aprovado (aplica somente custos aplicaveis)",
+                },
+                {
+                  value: "approved",
+                  label: "Aprovado (oficial, aplica custos restantes)",
+                },
+                { value: "pending", label: "Pendente (administrativo)" },
+                { value: "rejected", label: "Rejeitado (administrativo)" },
+              ]}
+            />
+
+            {!isLoadingClients && clientsCatalog.length === 0 && (
+              <p className="text-xs text-destructive">
+                Nenhum cliente cadastrado no banco para selecionar.
+              </p>
+            )}
+
+            <FormField
+              label="Descrição"
               as="textarea"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              placeholder={PROPOSAL_NOTES_PLACEHOLDER}
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              placeholder={PROPOSAL_DESCRIPTION_PLACEHOLDER}
             />
-          </div>
 
-          <FormField
-            label="Condições comerciais para PDF"
-            as="textarea"
-            value={form.paymentTerms}
-            onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
-            placeholder={DEFAULT_BUDGET_PDF_PAYMENT_TERMS}
-          />
-
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Itens</p>
-
-            {productsError && (
-              <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                <span>{productsError}</span>
-                <button
-                  onClick={() => void loadProductsForForm()}
-                  className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                >
-                  TENTAR NOVAMENTE
-                </button>
-              </div>
-            )}
-
-            {form.items.length > 0 && (
-              <div className="border border-border rounded mb-3 divide-y divide-border/50">
-                {form.items.map((item, i) => (
-                  <div key={i} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span>{item.productName} × {item.quantity} {item.unit}</span>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
-                      >
-                        {resolveItemStockStatus(item).label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs">R$ {item.subtotal.toFixed(2)}</span>
-                      <button onClick={() => removeItem(i)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setNewItem((current) => ({ ...createEmptyMaterialInput("existing"), mode: "existing" }))}
-                className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                  newItem.mode === "existing"
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                Selecionar produto existente
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewItem((current) => ({ ...createEmptyMaterialInput("new"), mode: "new" }))}
-                className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                  newItem.mode === "new"
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                Cadastrar material novo
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              <div className="flex-1">
-                {newItem.mode === "existing" ? (
-                  <FormField
-                    label="Produto"
-                    as="select"
-                    value={newItem.productId}
-                    onChange={e => setNewItem({ ...newItem, productId: e.target.value })}
-                    options={productsCatalog.map((product) => ({
-                      value: product.id,
-                      label: `${product.name} (Saldo: ${product.stockQuantity})`,
-                    }))}
-                  />
-                ) : (
-                  <FormField
-                    label="Novo material"
-                    value={newItem.productName}
-                    onChange={e => setNewItem({ ...newItem, productName: e.target.value })}
-                    placeholder="Ex.: MDF Branco 15mm"
-                  />
-                )}
-              </div>
-              <div className="w-full md:w-24">
-                <FormField
-                  label="Qtd."
-                  type="number"
-                  min={1}
-                  value={newItem.quantity}
-                  onChange={e => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
-                />
-              </div>
-              <div className="w-full md:w-28">
-                <FormField
-                  label="Unid."
-                  value={newItem.unit}
-                  onChange={e => setNewItem({ ...newItem, unit: e.target.value })}
-                />
-              </div>
-              <div className="w-full md:w-32">
-                <FormField
-                  label="Vlr Unit."
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={newItem.unitPrice}
-                  onChange={e => setNewItem({ ...newItem, unitPrice: Number(e.target.value) })}
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={addItem}
-                  disabled={newItem.mode === "existing" && (isLoadingProducts || productsCatalog.length === 0)}
-                  className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {newItem.mode === "existing" && isLoadingProducts ? "CARREGANDO..." : "ADICIONAR"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Departamentos de gasto</p>
-              <button
-                type="button"
-                onClick={addExpenseDepartment}
-                className="px-3 py-1 text-[11px] font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground"
-              >
-                Adicionar departamento
-              </button>
-            </div>
-
-            {expenseDepartmentsCatalogError && (
-              <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                <span>{expenseDepartmentsCatalogError}</span>
-                <button
-                  onClick={() => void loadExpenseDepartmentsCatalog(expenseDepartmentsSearch)}
-                  className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                >
-                  TENTAR NOVAMENTE
-                </button>
-              </div>
-            )}
-
-            <div className="mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
-                label="Buscar no catalogo de departamentos"
-                value={expenseDepartmentsSearch}
-                onChange={(event) => setExpenseDepartmentsSearch(event.target.value)}
-                placeholder="Digite nome ou setor"
+                label="Prazo estimado de entrega (dias úteis previstos)"
+                type="number"
+                min={1}
+                step="1"
+                value={form.estimatedDeliveryBusinessDays}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    estimatedDeliveryBusinessDays: e.target.value,
+                  })
+                }
+              />
+              <FormField
+                label="Observações"
+                as="textarea"
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder={PROPOSAL_NOTES_PLACEHOLDER}
               />
             </div>
 
-            {form.expenseDepartments.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum departamento adicionado.</p>
-            ) : (
-              <div className="space-y-3">
-                {form.expenseDepartments.map((department, index) => (
-                  <div key={`expense-create-${index}`} className="rounded border border-border p-3 space-y-3 bg-secondary/10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <FormField
-                        label="Reusar do catalogo (opcional)"
-                        as="select"
-                        value={department.expenseDepartmentId || ""}
-                        onChange={(event) => {
-                          const catalogId = event.target.value;
-                          updateExpenseDepartmentField(index, "expenseDepartmentId", catalogId);
+            <FormField
+              label="Condições comerciais para PDF"
+              as="textarea"
+              value={form.paymentTerms}
+              onChange={(e) =>
+                setForm({ ...form, paymentTerms: e.target.value })
+              }
+              placeholder={DEFAULT_BUDGET_PDF_PAYMENT_TERMS}
+            />
 
-                          if (catalogId) {
-                            applyCatalogToExpenseDepartment(index, catalogId);
-                          }
-                        }}
-                        options={expenseDepartmentsCatalog.map((catalogItem) => ({
-                          value: catalogItem.id,
-                          label: formatExpenseDepartmentSuggestion(catalogItem),
-                        }))}
-                      />
+            <div className="flex flex-wrap gap-2 -mt-2">
+              {[
+                "Ato",
+                "Boleto 15 dias",
+                "Boleto 30 dias",
+                "Boleto 45 dias",
+                "Ato + boleto 15/30/45 dias",
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      paymentTerms: current.paymentTerms.trim()
+                        ? `${current.paymentTerms}\n${preset}`
+                        : preset,
+                    }))
+                  }
+                  className="px-2.5 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:bg-secondary"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
 
-                      <FormField
-                        label="Valor"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={department.amount}
-                        onChange={(event) =>
-                          updateExpenseDepartmentField(index, "amount", Number(event.target.value))
-                        }
-                        error={expenseDepartmentsFieldErrors[`${index}-amount`]}
-                      />
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
+                Itens
+              </p>
+
+              {productsError && (
+                <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                  <span>{productsError}</span>
+                  <button
+                    onClick={() => void loadProductsForForm()}
+                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                  >
+                    TENTAR NOVAMENTE
+                  </button>
+                </div>
+              )}
+
+              {form.items.length > 0 && (
+                <div className="border border-border rounded mb-3 divide-y divide-border/50">
+                  {form.items.map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {item.productName} × {item.quantity} {item.unit}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
+                        >
+                          {resolveItemStockStatus(item).label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs">
+                          R$ {item.subtotal.toFixed(2)}
+                        </span>
+                        <button
+                          onClick={() => removeItem(i)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <FormField
-                        label="Nome"
-                        value={department.name}
-                        onChange={(event) => updateExpenseDepartmentField(index, "name", event.target.value)}
-                        placeholder="Ex.: Terceirizado eletrica"
-                        error={expenseDepartmentsFieldErrors[`${index}-name`]}
-                      />
-
-                      <FormField
-                        label="Setor"
-                        value={department.sector}
-                        onChange={(event) => updateExpenseDepartmentField(index, "sector", event.target.value)}
-                        placeholder="Ex.: Eletrica"
-                        error={expenseDepartmentsFieldErrors[`${index}-sector`]}
-                      />
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => removeExpenseDepartment(index)}
-                        className="px-3 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
-                      >
-                        Remover departamento
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewItem((current) => ({
+                      ...createEmptyMaterialInput("existing"),
+                      mode: "existing",
+                    }))
+                  }
+                  className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                    newItem.mode === "existing"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  Selecionar produto existente
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewItem((current) => ({
+                      ...createEmptyMaterialInput("new"),
+                      mode: "new",
+                    }))
+                  }
+                  className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                    newItem.mode === "new"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  Cadastrar material novo
+                </button>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                <div className="flex-1">
+                  {newItem.mode === "existing" ? (
+                    <FormField
+                      label="Produto"
+                      as="select"
+                      value={newItem.productId}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, productId: e.target.value })
+                      }
+                      options={productsCatalog.map((product) => ({
+                        value: product.id,
+                        label: `${product.name} (Saldo: ${product.stockQuantity})`,
+                      }))}
+                    />
+                  ) : (
+                    <FormField
+                      label="Novo material"
+                      value={newItem.productName}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, productName: e.target.value })
+                      }
+                      placeholder="Ex.: MDF Branco 15mm"
+                    />
+                  )}
+                </div>
+                <div className="w-full md:w-24">
+                  <FormField
+                    label="Qtd."
+                    type="number"
+                    min={1}
+                    value={newItem.quantity}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        quantity: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="w-full md:w-28">
+                  <FormField
+                    label="Unid."
+                    value={newItem.unit}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, unit: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="w-full md:w-32">
+                  <FormField
+                    label="Vlr Unit."
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={newItem.unitPrice}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        unitPrice: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={addItem}
+                    disabled={
+                      newItem.mode === "existing" &&
+                      (isLoadingProducts || productsCatalog.length === 0)
+                    }
+                    className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {newItem.mode === "existing" && isLoadingProducts
+                      ? "CARREGANDO..."
+                      : "ADICIONAR"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                  Departamentos de gasto
+                </p>
+                <button
+                  type="button"
+                  onClick={addExpenseDepartment}
+                  className="px-3 py-1 text-[11px] font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground"
+                >
+                  Adicionar departamento
+                </button>
+              </div>
+
+              {expenseDepartmentsCatalogError && (
+                <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                  <span>{expenseDepartmentsCatalogError}</span>
+                  <button
+                    onClick={() =>
+                      void loadExpenseDepartmentsCatalog(
+                        expenseDepartmentsSearch,
+                      )
+                    }
+                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                  >
+                    TENTAR NOVAMENTE
+                  </button>
+                </div>
+              )}
+
+              <div className="mb-3">
+                <FormField
+                  label="Buscar no catalogo de departamentos"
+                  value={expenseDepartmentsSearch}
+                  onChange={(event) =>
+                    setExpenseDepartmentsSearch(event.target.value)
+                  }
+                  placeholder="Digite nome ou setor"
+                />
+              </div>
+
+              {form.expenseDepartments.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum departamento adicionado.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {form.expenseDepartments.map((department, index) => (
+                    <div
+                      key={`expense-create-${index}`}
+                      className="rounded border border-border p-3 space-y-3 bg-secondary/10"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <FormField
+                          label="Reusar do catalogo (opcional)"
+                          as="select"
+                          value={department.expenseDepartmentId || ""}
+                          onChange={(event) => {
+                            const catalogId = event.target.value;
+                            updateExpenseDepartmentField(
+                              index,
+                              "expenseDepartmentId",
+                              catalogId,
+                            );
+
+                            if (catalogId) {
+                              applyCatalogToExpenseDepartment(index, catalogId);
+                            }
+                          }}
+                          options={expenseDepartmentsCatalog.map(
+                            (catalogItem) => ({
+                              value: catalogItem.id,
+                              label:
+                                formatExpenseDepartmentSuggestion(catalogItem),
+                            }),
+                          )}
+                        />
+
+                        <FormField
+                          label="Valor"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={department.amount}
+                          onChange={(event) =>
+                            updateExpenseDepartmentField(
+                              index,
+                              "amount",
+                              Number(event.target.value),
+                            )
+                          }
+                          error={
+                            expenseDepartmentsFieldErrors[`${index}-amount`]
+                          }
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <FormField
+                          label="Nome"
+                          value={department.name}
+                          onChange={(event) =>
+                            updateExpenseDepartmentField(
+                              index,
+                              "name",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Ex.: Terceirizado eletrica"
+                          error={expenseDepartmentsFieldErrors[`${index}-name`]}
+                        />
+
+                        <FormField
+                          label="Setor"
+                          value={department.sector}
+                          onChange={(event) =>
+                            updateExpenseDepartmentField(
+                              index,
+                              "sector",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Ex.: Eletrica"
+                          error={
+                            expenseDepartmentsFieldErrors[`${index}-sector`]
+                          }
+                        />
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeExpenseDepartment(index)}
+                          className="px-3 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                        >
+                          Remover departamento
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormField
+                label="Custo aplicavel (R$)"
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.costsApplicableValue ?? 0}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    costsApplicableValue: Math.max(
+                      0,
+                      Number(e.target.value) || 0,
+                    ),
+                  })
+                }
+                disabled={!isAdmin}
+              />
+              <FormField
+                label="Mão de Obra (R$)"
+                type="number"
+                step="0.01"
+                value={form.laborCost}
+                onChange={(e) =>
+                  setForm({ ...form, laborCost: Number(e.target.value) })
+                }
+                disabled={!isAdmin}
+              />
+              <FormField
+                label="Margem de Lucro (%)"
+                type="number"
+                step="1"
+                value={form.profitMargin * 100}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    profitMargin: Number(e.target.value) / 100,
+                  })
+                }
+                disabled={!isAdmin}
+              />
+            </div>
+
+            {!isAdmin && (
+              <p className="text-xs text-muted-foreground -mt-2">
+                Campos de custo e margem são editáveis apenas por admin.
+              </p>
+            )}
+
+            <div className="border border-border rounded p-4 bg-secondary/20">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Materiais
+                  </p>
+                  <p className="font-mono font-bold text-foreground">
+                    R$ {calc.materialCost.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Deptos. gasto
+                  </p>
+                  <p className="font-mono font-bold text-foreground">
+                    R$ {expenseDepartmentsCost.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Custos aplic.
+                  </p>
+                  <p className="font-mono font-bold text-foreground">
+                    R$ {costsApplicableValue.toFixed(2)}
+                  </p>
+                  {applicableCostsListCost > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Itens: {formatCurrency(applicableCostsListCost)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Custo Total
+                  </p>
+                  <p className="font-mono font-bold text-foreground">
+                    R$ {totalCostWithExpenses.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Preço Final
+                  </p>
+                  <p className="font-mono font-bold text-primary text-lg">
+                    R$ {finalPriceWithExpenses.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {formError && (
+              <p className="text-sm text-destructive">{formError}</p>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FormField
-              label="Custo aplicavel (R$)"
-              type="number"
-              min={0}
-              step="0.01"
-              value={form.costsApplicableValue ?? 0}
-              onChange={e => setForm({ ...form, costsApplicableValue: Math.max(0, Number(e.target.value) || 0) })}
-            />
-            <FormField label="Mão de Obra (R$)" type="number" step="0.01" value={form.laborCost} onChange={e => setForm({ ...form, laborCost: Number(e.target.value) })} />
-            <FormField label="Margem de Lucro (%)" type="number" step="1" value={form.profitMargin * 100} onChange={e => setForm({ ...form, profitMargin: Number(e.target.value) / 100 })} />
-          </div>
-
-          <div className="border border-border rounded p-4 bg-secondary/20">
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-center">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Materiais</p>
-                <p className="font-mono font-bold text-foreground">R$ {calc.materialCost.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Deptos. gasto</p>
-                <p className="font-mono font-bold text-foreground">R$ {expenseDepartmentsCost.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Custos aplic.</p>
-                <p className="font-mono font-bold text-foreground">R$ {costsApplicableValue.toFixed(2)}</p>
-                {applicableCostsListCost > 0 && (
-                  <p className="text-[10px] text-muted-foreground mt-1">Itens: {formatCurrency(applicableCostsListCost)}</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Custo Total</p>
-                <p className="font-mono font-bold text-foreground">R$ {totalCostWithExpenses.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Preço Final</p>
-                <p className="font-mono font-bold text-primary text-lg">R$ {finalPriceWithExpenses.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-
-          {formError && <p className="text-sm text-destructive">{formError}</p>}
-          </div>
-
           <div className="sticky bottom-0 z-10 mt-4 pt-3 border-t border-border bg-card/95 backdrop-blur flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
-            <button onClick={closeCreateModal} className="w-full sm:w-auto px-4 py-2 text-sm rounded border border-border hover:bg-secondary transition-colors text-muted-foreground">Cancelar</button>
+            <button
+              onClick={closeCreateModal}
+              className="w-full sm:w-auto px-4 py-2 text-sm rounded border border-border hover:bg-secondary transition-colors text-muted-foreground"
+            >
+              Cancelar
+            </button>
             <button
               onClick={() => void saveBudget()}
-              disabled={isSaving || isLoadingProducts || isLoadingClients || clientsCatalog.length === 0}
+              disabled={
+                isSaving ||
+                isLoadingProducts ||
+                isLoadingClients ||
+                clientsCatalog.length === 0
+              }
               className="w-full sm:w-auto px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSaving ? "Salvando..." : "Criar Orçamento"}
@@ -3212,10 +3876,12 @@ const BudgetsPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Ao pre-aprovar, somente os custos aplicaveis deste orcamento serao aplicados como gasto.
+              Ao pre-aprovar, somente os custos aplicaveis deste orcamento serao
+              aplicados como gasto.
             </p>
             <p className="text-xs text-muted-foreground">
-              Materiais, departamentos de gasto e mao de obra serao aplicados apenas na aprovacao oficial.
+              Materiais, departamentos de gasto e mao de obra serao aplicados
+              apenas na aprovacao oficial.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -3244,24 +3910,34 @@ const BudgetsPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Ao pre-aprovar, somente os custos aplicaveis serao aplicados agora.
+              Ao pre-aprovar, somente os custos aplicaveis serao aplicados
+              agora.
             </p>
             <p className="text-xs text-muted-foreground">
-              Materiais, departamentos de gasto e mao de obra serao aplicados somente na aprovacao oficial.
+              Materiais, departamentos de gasto e mao de obra serao aplicados
+              somente na aprovacao oficial.
             </p>
 
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Cliente:</span> {selectedToPreApprove.clientName}
+                <span className="text-muted-foreground">Cliente:</span>{" "}
+                {selectedToPreApprove.clientName}
               </p>
               <p>
-                <span className="text-muted-foreground">Descricao:</span> {selectedToPreApprove.description}
+                <span className="text-muted-foreground">Descricao:</span>{" "}
+                {selectedToPreApprove.description}
               </p>
               <p>
-                <span className="text-muted-foreground">Custos aplicaveis (agora):</span> {formatCurrency(selectedToPreApprove.costsApplicableValue)}
+                <span className="text-muted-foreground">
+                  Custos aplicaveis (agora):
+                </span>{" "}
+                {formatCurrency(selectedToPreApprove.costsApplicableValue)}
               </p>
               <p>
-                <span className="text-muted-foreground">Custo restante (apos pre-aprovacao):</span> {formatCurrency(selectedToPreApprove.remainingCostToApply)}
+                <span className="text-muted-foreground">
+                  Custo restante (apos pre-aprovacao):
+                </span>{" "}
+                {formatCurrency(selectedToPreApprove.remainingCostToApply)}
               </p>
             </div>
 
@@ -3278,7 +3954,9 @@ const BudgetsPage = () => {
                 disabled={preApprovingId === selectedToPreApprove.id}
                 className="px-4 py-2 text-sm rounded bg-blue-500 text-white font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {preApprovingId === selectedToPreApprove.id ? "Aplicando..." : "Pre-aprovar e aplicar custos aplicaveis"}
+                {preApprovingId === selectedToPreApprove.id
+                  ? "Aplicando..."
+                  : "Pre-aprovar e aplicar custos aplicaveis"}
               </button>
             </div>
           </div>
@@ -3294,7 +3972,9 @@ const BudgetsPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Esta acao finaliza o orcamento como aprovado/oficial e aplica os custos restantes (materiais, departamentos de gasto e mao de obra).
+              Esta acao finaliza o orcamento como aprovado/oficial e aplica os
+              custos restantes (materiais, departamentos de gasto e mao de
+              obra).
             </p>
             <p className="text-xs text-muted-foreground">
               Os custos aplicaveis ja lancados na pre-aprovacao serao mantidos.
@@ -3302,16 +3982,22 @@ const BudgetsPage = () => {
 
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Cliente:</span> {selectedToApprove.clientName}
+                <span className="text-muted-foreground">Cliente:</span>{" "}
+                {selectedToApprove.clientName}
               </p>
               <p>
-                <span className="text-muted-foreground">Descricao:</span> {selectedToApprove.description}
+                <span className="text-muted-foreground">Descricao:</span>{" "}
+                {selectedToApprove.description}
               </p>
               <p>
-                <span className="text-muted-foreground">Itens:</span> {selectedToApprove.items.length}
+                <span className="text-muted-foreground">Itens:</span>{" "}
+                {selectedToApprove.items.length}
               </p>
               <p>
-                <span className="text-muted-foreground">Custo restante para aplicar:</span> {formatCurrency(selectedToApprove.remainingCostToApply)}
+                <span className="text-muted-foreground">
+                  Custo restante para aplicar:
+                </span>{" "}
+                {formatCurrency(selectedToApprove.remainingCostToApply)}
               </p>
             </div>
 
@@ -3322,7 +4008,9 @@ const BudgetsPage = () => {
                 {approvalDetails.length > 0 && (
                   <ul className="list-disc pl-4 space-y-1 text-xs">
                     {approvalDetails.map((detail, index) => (
-                      <li key={`${detail.productId}-${index}`}>{formatApproveBudgetDetailMessage(detail)}</li>
+                      <li key={`${detail.productId}-${index}`}>
+                        {formatApproveBudgetDetailMessage(detail)}
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -3342,7 +4030,9 @@ const BudgetsPage = () => {
                 disabled={approvingId === selectedToApprove.id}
                 className="px-4 py-2 text-sm rounded bg-success text-success-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {approvingId === selectedToApprove.id ? "Aprovando..." : "Confirmar aprovacao oficial"}
+                {approvingId === selectedToApprove.id
+                  ? "Aprovando..."
+                  : "Confirmar aprovacao oficial"}
               </button>
             </div>
           </div>
@@ -3356,7 +4046,9 @@ const BudgetsPage = () => {
         width="max-w-2xl"
       >
         {isLoadingDetail ? (
-          <p className="text-sm text-muted-foreground">Carregando detalhes...</p>
+          <p className="text-sm text-muted-foreground">
+            Carregando detalhes...
+          </p>
         ) : (
           <div className="space-y-4">
             {detailError && (
@@ -3370,7 +4062,12 @@ const BudgetsPage = () => {
                 label="Cliente"
                 as="select"
                 value={detailForm.clientName}
-                onChange={(e) => setDetailForm((current) => ({ ...current, clientName: e.target.value }))}
+                onChange={(e) =>
+                  setDetailForm((current) => ({
+                    ...current,
+                    clientName: e.target.value,
+                  }))
+                }
                 options={detailClientOptions}
               />
 
@@ -3385,7 +4082,10 @@ const BudgetsPage = () => {
                   }))
                 }
                 options={[
-                  { value: "arquitetonico", label: formatCategory("arquitetonico") },
+                  {
+                    value: "arquitetonico",
+                    label: formatCategory("arquitetonico"),
+                  },
                   { value: "executivo", label: formatCategory("executivo") },
                 ]}
               />
@@ -3394,7 +4094,9 @@ const BudgetsPage = () => {
             {selectedBudget && (
               <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm">
                 <span className="text-muted-foreground">Categoria:</span>{" "}
-                <span className="font-medium text-foreground">{formatCategory(detailForm.category)}</span>
+                <span className="font-medium text-foreground">
+                  {formatCategory(detailForm.category)}
+                </span>
               </div>
             )}
 
@@ -3403,12 +4105,20 @@ const BudgetsPage = () => {
                 label="Status"
                 as="select"
                 value={detailForm.status}
-                onChange={(e) => requestStatusChange("detail", e.target.value as BudgetStatus)}
+                onChange={(e) =>
+                  requestStatusChange("detail", e.target.value as BudgetStatus)
+                }
                 error={detailStatusFieldError}
                 options={[
                   { value: "draft", label: "Rascunho" },
-                  { value: "pre_approved", label: "Pre-aprovado (aplica somente custos aplicaveis)" },
-                  { value: "approved", label: "Aprovado (oficial, aplica custos restantes)" },
+                  {
+                    value: "pre_approved",
+                    label: "Pre-aprovado (aplica somente custos aplicaveis)",
+                  },
+                  {
+                    value: "approved",
+                    label: "Aprovado (oficial, aplica custos restantes)",
+                  },
                   { value: "pending", label: "Pendente" },
                   { value: "rejected", label: "Rejeitado" },
                 ]}
@@ -3417,7 +4127,10 @@ const BudgetsPage = () => {
 
             {selectedBudget && selectedBudget.costsAppliedAt && (
               <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                Custos aplicaveis ja aplicados em {formatDateTime(selectedBudget.costsAppliedAt)} com base no valor salvo em Custo aplicavel. Alteracoes devem considerar o impacto financeiro ja registrado.
+                Custos aplicaveis ja aplicados em{" "}
+                {formatDateTime(selectedBudget.costsAppliedAt)} com base no
+                valor salvo em Custo aplicavel. Alteracoes devem considerar o
+                impacto financeiro ja registrado.
               </div>
             )}
 
@@ -3428,20 +4141,32 @@ const BudgetsPage = () => {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Custo aplicavel (base)</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(selectedBudget.costsApplicableValue)}</p>
+                    <p className="text-muted-foreground">
+                      Custo aplicavel (base)
+                    </p>
+                    <p className="font-mono font-bold text-foreground">
+                      {formatCurrency(selectedBudget.costsApplicableValue)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Custos aplicados</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(selectedBudget.costsAppliedValue)}</p>
+                    <p className="font-mono font-bold text-foreground">
+                      {formatCurrency(selectedBudget.costsAppliedValue)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Data da aplicacao</p>
-                    <p className="font-medium text-foreground">{formatDateTime(selectedBudget.costsAppliedAt)}</p>
+                    <p className="font-medium text-foreground">
+                      {formatDateTime(selectedBudget.costsAppliedAt)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Custo restante para aplicar</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(selectedBudget.remainingCostToApply)}</p>
+                    <p className="text-muted-foreground">
+                      Custo restante para aplicar
+                    </p>
+                    <p className="font-mono font-bold text-foreground">
+                      {formatCurrency(selectedBudget.remainingCostToApply)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -3454,21 +4179,44 @@ const BudgetsPage = () => {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Prazo estimado de entrega</p>
-                    <p className="font-medium text-foreground">{formatBusinessDaysLabel(selectedBudget.estimatedDeliveryBusinessDays)}</p>
+                    <p className="text-muted-foreground">
+                      Prazo estimado de entrega
+                    </p>
+                    <p className="font-medium text-foreground">
+                      {formatBusinessDaysLabel(
+                        selectedBudget.estimatedDeliveryBusinessDays,
+                      )}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Validade</p>
-                    <p className="font-medium text-foreground">{selectedBudget.validityBusinessDays} dias uteis</p>
+                    <p className="font-medium text-foreground">
+                      {selectedBudget.validityBusinessDays} dias uteis
+                    </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Dias úteis decorridos</p>
-                    <p className="font-medium text-foreground">{selectedBudget.elapsedBusinessDays}</p>
+                    <p className="text-muted-foreground">
+                      Dias úteis decorridos
+                    </p>
+                    <p className="font-medium text-foreground">
+                      {selectedBudget.elapsedBusinessDays}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Dias úteis restantes</p>
-                    <p className={selectedBudget.isExpired ? "font-medium text-destructive" : "font-medium text-success"}>
-                      {selectedBudget.remainingValidityBusinessDays} • {selectedBudget.isExpired ? "Expirado" : "Dentro da validade"}
+                    <p className="text-muted-foreground">
+                      Dias úteis restantes
+                    </p>
+                    <p
+                      className={
+                        selectedBudget.isExpired
+                          ? "font-medium text-destructive"
+                          : "font-medium text-success"
+                      }
+                    >
+                      {selectedBudget.remainingValidityBusinessDays} •{" "}
+                      {selectedBudget.isExpired
+                        ? "Expirado"
+                        : "Dentro da validade"}
                     </p>
                   </div>
                 </div>
@@ -3479,7 +4227,12 @@ const BudgetsPage = () => {
               label="Descrição"
               as="textarea"
               value={detailForm.description}
-              onChange={(e) => setDetailForm((current) => ({ ...current, description: e.target.value }))}
+              onChange={(e) =>
+                setDetailForm((current) => ({
+                  ...current,
+                  description: e.target.value,
+                }))
+              }
               placeholder={PROPOSAL_DESCRIPTION_PLACEHOLDER}
             />
 
@@ -3507,7 +4260,10 @@ const BudgetsPage = () => {
                 onChange={(e) =>
                   setDetailForm((current) => ({
                     ...current,
-                    costsApplicableValue: Math.max(0, Number(e.target.value) || 0),
+                    costsApplicableValue: Math.max(
+                      0,
+                      Number(e.target.value) || 0,
+                    ),
                   }))
                 }
               />
@@ -3526,20 +4282,58 @@ const BudgetsPage = () => {
               label="Condições comerciais para PDF"
               as="textarea"
               value={detailForm.paymentTerms}
-              onChange={(e) => setDetailForm((current) => ({ ...current, paymentTerms: e.target.value }))}
+              onChange={(e) =>
+                setDetailForm((current) => ({
+                  ...current,
+                  paymentTerms: e.target.value,
+                }))
+              }
               placeholder={DEFAULT_BUDGET_PDF_PAYMENT_TERMS}
             />
 
+            <div className="flex flex-wrap gap-2 -mt-2">
+              {[
+                "Ato",
+                "Boleto 15 dias",
+                "Boleto 30 dias",
+                "Boleto 45 dias",
+                "Ato + boleto 15/30/45 dias",
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() =>
+                    setDetailForm((current) => ({
+                      ...current,
+                      paymentTerms: current.paymentTerms.trim()
+                        ? `${current.paymentTerms}\n${preset}`
+                        : preset,
+                    }))
+                  }
+                  className="px-2.5 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:bg-secondary"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
             {selectedBudget && (
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Materiais</p>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
+                  Materiais
+                </p>
 
                 {selectedBudget.items.length > 0 && (
                   <div className="border border-border rounded mb-3 divide-y divide-border/50">
                     {selectedBudget.items.map((item, i) => (
-                      <div key={i} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                      <div
+                        key={i}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                      >
                         <div className="flex items-center gap-2">
-                          <span>{item.productName} × {item.quantity} {item.unit}</span>
+                          <span>
+                            {item.productName} × {item.quantity} {item.unit}
+                          </span>
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
                           >
@@ -3548,7 +4342,9 @@ const BudgetsPage = () => {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs">R$ {item.subtotal.toFixed(2)}</span>
+                          <span className="font-mono text-xs">
+                            R$ {item.subtotal.toFixed(2)}
+                          </span>
                           <button
                             onClick={() => removeDetailItem(i)}
                             className="text-muted-foreground hover:text-destructive"
@@ -3564,7 +4360,12 @@ const BudgetsPage = () => {
                 <div className="mb-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setDetailNewItem((current) => ({ ...createEmptyMaterialInput("existing"), mode: "existing" }))}
+                    onClick={() =>
+                      setDetailNewItem((current) => ({
+                        ...createEmptyMaterialInput("existing"),
+                        mode: "existing",
+                      }))
+                    }
                     className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
                       detailNewItem.mode === "existing"
                         ? "border-primary/40 bg-primary/10 text-primary"
@@ -3575,7 +4376,12 @@ const BudgetsPage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDetailNewItem((current) => ({ ...createEmptyMaterialInput("new"), mode: "new" }))}
+                    onClick={() =>
+                      setDetailNewItem((current) => ({
+                        ...createEmptyMaterialInput("new"),
+                        mode: "new",
+                      }))
+                    }
                     className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
                       detailNewItem.mode === "new"
                         ? "border-primary/40 bg-primary/10 text-primary"
@@ -3593,7 +4399,12 @@ const BudgetsPage = () => {
                         label="Produto"
                         as="select"
                         value={detailNewItem.productId}
-                        onChange={e => setDetailNewItem({ ...detailNewItem, productId: e.target.value })}
+                        onChange={(e) =>
+                          setDetailNewItem({
+                            ...detailNewItem,
+                            productId: e.target.value,
+                          })
+                        }
                         options={productsCatalog.map((product) => ({
                           value: product.id,
                           label: `${product.name} (Saldo: ${product.stockQuantity})`,
@@ -3603,7 +4414,12 @@ const BudgetsPage = () => {
                       <FormField
                         label="Novo material"
                         value={detailNewItem.productName}
-                        onChange={e => setDetailNewItem({ ...detailNewItem, productName: e.target.value })}
+                        onChange={(e) =>
+                          setDetailNewItem({
+                            ...detailNewItem,
+                            productName: e.target.value,
+                          })
+                        }
                         placeholder="Ex.: MDF Branco 15mm"
                       />
                     )}
@@ -3614,14 +4430,24 @@ const BudgetsPage = () => {
                       type="number"
                       min={1}
                       value={detailNewItem.quantity}
-                      onChange={e => setDetailNewItem({ ...detailNewItem, quantity: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDetailNewItem({
+                          ...detailNewItem,
+                          quantity: Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                   <div className="w-full md:w-28">
                     <FormField
                       label="Unid."
                       value={detailNewItem.unit}
-                      onChange={e => setDetailNewItem({ ...detailNewItem, unit: e.target.value })}
+                      onChange={(e) =>
+                        setDetailNewItem({
+                          ...detailNewItem,
+                          unit: e.target.value,
+                        })
+                      }
                     />
                   </div>
                   <div className="w-full md:w-32">
@@ -3631,23 +4457,35 @@ const BudgetsPage = () => {
                       min={0}
                       step="0.01"
                       value={detailNewItem.unitPrice}
-                      onChange={e => setDetailNewItem({ ...detailNewItem, unitPrice: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDetailNewItem({
+                          ...detailNewItem,
+                          unitPrice: Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                   <div className="flex items-end">
                     <button
                       onClick={addDetailItem}
-                      disabled={detailNewItem.mode === "existing" && (isLoadingProducts || productsCatalog.length === 0)}
+                      disabled={
+                        detailNewItem.mode === "existing" &&
+                        (isLoadingProducts || productsCatalog.length === 0)
+                      }
                       className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {detailNewItem.mode === "existing" && isLoadingProducts ? "CARREGANDO..." : "ADICIONAR"}
+                      {detailNewItem.mode === "existing" && isLoadingProducts
+                        ? "CARREGANDO..."
+                        : "ADICIONAR"}
                     </button>
                   </div>
                 </div>
 
                 <div className="mt-6">
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Departamentos de gasto</p>
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                      Departamentos de gasto
+                    </p>
                     <button
                       type="button"
                       onClick={addDetailExpenseDepartment}
@@ -3661,7 +4499,11 @@ const BudgetsPage = () => {
                     <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
                       <span>{expenseDepartmentsCatalogError}</span>
                       <button
-                        onClick={() => void loadExpenseDepartmentsCatalog(detailExpenseDepartmentsSearch)}
+                        onClick={() =>
+                          void loadExpenseDepartmentsCatalog(
+                            detailExpenseDepartmentsSearch,
+                          )
+                        }
                         className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
                       >
                         TENTAR NOVAMENTE
@@ -3673,78 +4515,129 @@ const BudgetsPage = () => {
                     <FormField
                       label="Buscar no catalogo de departamentos"
                       value={detailExpenseDepartmentsSearch}
-                      onChange={(event) => setDetailExpenseDepartmentsSearch(event.target.value)}
+                      onChange={(event) =>
+                        setDetailExpenseDepartmentsSearch(event.target.value)
+                      }
                       placeholder="Digite nome ou setor"
                     />
                   </div>
 
                   {detailForm.expenseDepartments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Nenhum departamento adicionado.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Nenhum departamento adicionado.
+                    </p>
                   ) : (
                     <div className="space-y-3">
-                      {detailForm.expenseDepartments.map((department, index) => (
-                        <div key={`expense-detail-${index}`} className="rounded border border-border p-3 space-y-3 bg-secondary/10">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <FormField
-                              label="Reusar do catalogo (opcional)"
-                              as="select"
-                              value={department.expenseDepartmentId || ""}
-                              onChange={(event) => {
-                                const catalogId = event.target.value;
-                                updateDetailExpenseDepartmentField(index, "expenseDepartmentId", catalogId);
+                      {detailForm.expenseDepartments.map(
+                        (department, index) => (
+                          <div
+                            key={`expense-detail-${index}`}
+                            className="rounded border border-border p-3 space-y-3 bg-secondary/10"
+                          >
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <FormField
+                                label="Reusar do catalogo (opcional)"
+                                as="select"
+                                value={department.expenseDepartmentId || ""}
+                                onChange={(event) => {
+                                  const catalogId = event.target.value;
+                                  updateDetailExpenseDepartmentField(
+                                    index,
+                                    "expenseDepartmentId",
+                                    catalogId,
+                                  );
 
-                                if (catalogId) {
-                                  applyCatalogToDetailExpenseDepartment(index, catalogId);
+                                  if (catalogId) {
+                                    applyCatalogToDetailExpenseDepartment(
+                                      index,
+                                      catalogId,
+                                    );
+                                  }
+                                }}
+                                options={expenseDepartmentsCatalog.map(
+                                  (catalogItem) => ({
+                                    value: catalogItem.id,
+                                    label:
+                                      formatExpenseDepartmentSuggestion(
+                                        catalogItem,
+                                      ),
+                                  }),
+                                )}
+                              />
+
+                              <FormField
+                                label="Valor"
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={department.amount}
+                                onChange={(event) =>
+                                  updateDetailExpenseDepartmentField(
+                                    index,
+                                    "amount",
+                                    Number(event.target.value),
+                                  )
                                 }
-                              }}
-                              options={expenseDepartmentsCatalog.map((catalogItem) => ({
-                                value: catalogItem.id,
-                                label: formatExpenseDepartmentSuggestion(catalogItem),
-                              }))}
-                            />
+                                error={
+                                  detailExpenseDepartmentsFieldErrors[
+                                    `${index}-amount`
+                                  ]
+                                }
+                              />
+                            </div>
 
-                            <FormField
-                              label="Valor"
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={department.amount}
-                              onChange={(event) =>
-                                updateDetailExpenseDepartmentField(index, "amount", Number(event.target.value))
-                              }
-                              error={detailExpenseDepartmentsFieldErrors[`${index}-amount`]}
-                            />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <FormField
+                                label="Nome"
+                                value={department.name}
+                                onChange={(event) =>
+                                  updateDetailExpenseDepartmentField(
+                                    index,
+                                    "name",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Ex.: Terceirizado eletrica"
+                                error={
+                                  detailExpenseDepartmentsFieldErrors[
+                                    `${index}-name`
+                                  ]
+                                }
+                              />
+
+                              <FormField
+                                label="Setor"
+                                value={department.sector}
+                                onChange={(event) =>
+                                  updateDetailExpenseDepartmentField(
+                                    index,
+                                    "sector",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Ex.: Eletrica"
+                                error={
+                                  detailExpenseDepartmentsFieldErrors[
+                                    `${index}-sector`
+                                  ]
+                                }
+                              />
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeDetailExpenseDepartment(index)
+                                }
+                                className="px-3 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                              >
+                                Remover departamento
+                              </button>
+                            </div>
                           </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <FormField
-                              label="Nome"
-                              value={department.name}
-                              onChange={(event) => updateDetailExpenseDepartmentField(index, "name", event.target.value)}
-                              placeholder="Ex.: Terceirizado eletrica"
-                              error={detailExpenseDepartmentsFieldErrors[`${index}-name`]}
-                            />
-
-                            <FormField
-                              label="Setor"
-                              value={department.sector}
-                              onChange={(event) => updateDetailExpenseDepartmentField(index, "sector", event.target.value)}
-                              placeholder="Ex.: Eletrica"
-                              error={detailExpenseDepartmentsFieldErrors[`${index}-sector`]}
-                            />
-                          </div>
-
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => removeDetailExpenseDepartment(index)}
-                              className="px-3 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
-                            >
-                              Remover departamento
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        ),
+                      )}
                     </div>
                   )}
                 </div>
@@ -3752,24 +4645,44 @@ const BudgetsPage = () => {
                 <div className="mt-6 border border-border rounded p-4 bg-secondary/20">
                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-center">
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Materiais</p>
-                      <p className="font-mono font-bold text-foreground">{formatCurrency(detailMaterialCost)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                        Materiais
+                      </p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(detailMaterialCost)}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Deptos. gasto</p>
-                      <p className="font-mono font-bold text-foreground">{formatCurrency(detailExpenseDepartmentsCost)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                        Deptos. gasto
+                      </p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(detailExpenseDepartmentsCost)}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Custos aplic.</p>
-                      <p className="font-mono font-bold text-foreground">{formatCurrency(detailApplicableCostsCost)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                        Custos aplic.
+                      </p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(detailApplicableCostsCost)}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Custo total</p>
-                      <p className="font-mono font-bold text-foreground">{formatCurrency(detailTotalCostWithExpenses)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                        Custo total
+                      </p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(detailTotalCostWithExpenses)}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Preço total</p>
-                      <p className="font-mono font-bold text-primary">{formatCurrency(detailFinalPriceWithExpenses)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                        Preço total
+                      </p>
+                      <p className="font-mono font-bold text-primary">
+                        {formatCurrency(detailFinalPriceWithExpenses)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -3784,31 +4697,109 @@ const BudgetsPage = () => {
                 className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-secondary/30 transition-colors rounded"
               >
                 <span className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Configuração de Papelão</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                    Configuração de Papelão
+                  </span>
                   {paperboardConfig && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary">Configurado</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary">
+                      Configurado
+                    </span>
                   )}
                 </span>
-                <span className="text-muted-foreground text-xs">{isPaperboardSectionOpen ? "▲" : "▼"}</span>
+                <span className="text-muted-foreground text-xs">
+                  {isPaperboardSectionOpen ? "▲" : "▼"}
+                </span>
               </button>
 
               {isPaperboardSectionOpen && (
                 <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
                   {isLoadingPaperboard ? (
-                    <p className="text-sm text-muted-foreground">Carregando configuração...</p>
+                    <p className="text-sm text-muted-foreground">
+                      Carregando configuração...
+                    </p>
                   ) : (
                     <>
                       {paperboardConfig && (
                         <div className="border border-primary/30 rounded p-3 bg-primary/5 text-sm space-y-1">
-                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">Configuração Atual</p>
-                          <p><span className="text-muted-foreground">Dimensões:</span> {paperboardConfig.length} × {paperboardConfig.width} × {paperboardConfig.height} cm</p>
-                          <p><span className="text-muted-foreground">Gramatura:</span> {paperboardConfig.gramatura} g/m²</p>
-                          <p><span className="text-muted-foreground">Quantidade:</span> {paperboardConfig.quantity}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                            Configuração Atual
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Dimensões:
+                            </span>{" "}
+                            {paperboardConfig.length} × {paperboardConfig.width}{" "}
+                            × {paperboardConfig.height} cm
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Gramatura:
+                            </span>{" "}
+                            {paperboardConfig.gramatura} g/m²
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Quantidade:
+                            </span>{" "}
+                            {paperboardConfig.quantity}
+                          </p>
                           {paperboardConfig.estimatedCost != null && (
-                            <p><span className="text-muted-foreground">Custo estimado:</span> <strong className="text-primary">{formatCurrency(paperboardConfig.estimatedCost)}</strong></p>
+                            <p>
+                              <span className="text-muted-foreground">
+                                Custo estimado:
+                              </span>{" "}
+                              <strong className="text-primary">
+                                {formatCurrency(paperboardConfig.estimatedCost)}
+                              </strong>
+                            </p>
                           )}
+                          {paperboardConfig.suggestedPrice != null && (
+                            <p>
+                              <span className="text-muted-foreground">
+                                Preço sugerido:
+                              </span>{" "}
+                              <strong>
+                                {formatCurrency(
+                                  paperboardConfig.suggestedPrice,
+                                )}
+                              </strong>
+                            </p>
+                          )}
+                          {paperboardConfig.totalBundles > 0 && (
+                            <p>
+                              <span className="text-muted-foreground">
+                                Fardos:
+                              </span>{" "}
+                              {paperboardConfig.totalBundles.toLocaleString(
+                                "pt-BR",
+                              )}
+                            </p>
+                          )}
+                          <p>
+                            <span className="text-muted-foreground">
+                              Folhas estimadas:
+                            </span>{" "}
+                            {paperboardConfig.totalSheets.toLocaleString(
+                              "pt-BR",
+                              {
+                                maximumFractionDigits: 2,
+                              },
+                            )}
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Custo material:
+                            </span>{" "}
+                            {formatCurrency(paperboardConfig.materialCost)}
+                          </p>
                           {paperboardConfig.area != null && (
-                            <p><span className="text-muted-foreground">Área:</span> {paperboardConfig.area.toLocaleString("pt-BR")} cm²</p>
+                            <p>
+                              <span className="text-muted-foreground">
+                                Área:
+                              </span>{" "}
+                              {paperboardConfig.area.toLocaleString("pt-BR")}{" "}
+                              cm²
+                            </p>
                           )}
                         </div>
                       )}
@@ -3820,7 +4811,12 @@ const BudgetsPage = () => {
                           min={0}
                           step="0.1"
                           value={paperboardForm.length}
-                          onChange={(e) => setPaperboardForm((f) => ({ ...f, length: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              length: Number(e.target.value),
+                            }))
+                          }
                         />
                         <FormField
                           label="Largura (cm)"
@@ -3828,7 +4824,12 @@ const BudgetsPage = () => {
                           min={0}
                           step="0.1"
                           value={paperboardForm.width}
-                          onChange={(e) => setPaperboardForm((f) => ({ ...f, width: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              width: Number(e.target.value),
+                            }))
+                          }
                         />
                         <FormField
                           label="Altura (cm)"
@@ -3836,7 +4837,12 @@ const BudgetsPage = () => {
                           min={0}
                           step="0.1"
                           value={paperboardForm.height}
-                          onChange={(e) => setPaperboardForm((f) => ({ ...f, height: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              height: Number(e.target.value),
+                            }))
+                          }
                         />
                         <FormField
                           label="Gramatura (g/m²)"
@@ -3844,7 +4850,12 @@ const BudgetsPage = () => {
                           min={0}
                           step="1"
                           value={paperboardForm.gramatura}
-                          onChange={(e) => setPaperboardForm((f) => ({ ...f, gramatura: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              gramatura: Number(e.target.value),
+                            }))
+                          }
                         />
                         <FormField
                           label="Quantidade"
@@ -3852,7 +4863,99 @@ const BudgetsPage = () => {
                           min={1}
                           step="1"
                           value={paperboardForm.quantity}
-                          onChange={(e) => setPaperboardForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              quantity: Number(e.target.value),
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Folhas por fardo"
+                          type="number"
+                          min={1}
+                          step="1"
+                          value={paperboardForm.sheetsPerBundle ?? ""}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              sheetsPerBundle: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Custo por folha (R$)"
+                          type="number"
+                          min={0}
+                          step="0.0001"
+                          value={paperboardForm.sheetUnitCost ?? ""}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              sheetUnitCost: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Custo corte/kg (R$)"
+                          type="number"
+                          min={0}
+                          step="0.0001"
+                          value={paperboardForm.cuttingCostPerKg ?? ""}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              cuttingCostPerKg: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Custo vinco/kg (R$)"
+                          type="number"
+                          min={0}
+                          step="0.0001"
+                          value={paperboardForm.creasingCostPerKg ?? ""}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              creasingCostPerKg: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Perda (%)"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.1"
+                          value={paperboardForm.lossPercentage ?? 0}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              lossPercentage: Number(e.target.value),
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Markup (%)"
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          value={paperboardForm.markupPercentage ?? 35}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              markupPercentage: Number(e.target.value),
+                            }))
+                          }
                         />
                       </div>
 
@@ -3861,24 +4964,42 @@ const BudgetsPage = () => {
                           <input
                             type="checkbox"
                             checked={paperboardForm.usesFullSheet}
-                            onChange={(e) => setPaperboardForm((f) => ({ ...f, usesFullSheet: e.target.checked }))}
+                            onChange={(e) =>
+                              setPaperboardForm((f) => ({
+                                ...f,
+                                usesFullSheet: e.target.checked,
+                              }))
+                            }
                             className="rounded border-border"
                           />
                           Usar folha inteira
                         </label>
                         <label
                           className={`flex items-center gap-2 text-sm cursor-pointer ${paperboardForm.quantity < 500 ? "opacity-50 cursor-not-allowed" : ""}`}
-                          title={paperboardForm.quantity < 500 ? "Corte terceirizado requer quantidade mínima de 500" : ""}
+                          title={
+                            paperboardForm.quantity < 500
+                              ? "Corte terceirizado requer quantidade mínima de 500"
+                              : ""
+                          }
                         >
                           <input
                             type="checkbox"
                             checked={paperboardForm.outsourcedCut}
                             disabled={paperboardForm.quantity < 500}
-                            onChange={(e) => setPaperboardForm((f) => ({ ...f, outsourcedCut: e.target.checked }))}
+                            onChange={(e) =>
+                              setPaperboardForm((f) => ({
+                                ...f,
+                                outsourcedCut: e.target.checked,
+                              }))
+                            }
                             className="rounded border-border"
                           />
                           Corte terceirizado
-                          {paperboardForm.quantity < 500 && <span className="text-[10px] text-muted-foreground">(mín. 500 unid.)</span>}
+                          {paperboardForm.quantity < 500 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              (mín. 500 unid.)
+                            </span>
+                          )}
                         </label>
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
                           <input
@@ -3886,7 +5007,14 @@ const BudgetsPage = () => {
                             checked={paperboardForm.isFirstPurchase}
                             onChange={(e) => {
                               const checked = e.target.checked;
-                              setPaperboardForm((f) => ({ ...f, isFirstPurchase: checked, clicheCost: checked ? f.clicheCost : undefined, clichePrice: checked ? f.clichePrice : undefined }));
+                              setPaperboardForm((f) => ({
+                                ...f,
+                                isFirstPurchase: checked,
+                                clicheCost: checked ? f.clicheCost : undefined,
+                                clichePrice: checked
+                                  ? f.clichePrice
+                                  : undefined,
+                              }));
                             }}
                             className="rounded border-border"
                           />
@@ -3902,7 +5030,14 @@ const BudgetsPage = () => {
                             min={0}
                             step="0.01"
                             value={paperboardForm.clicheCost ?? ""}
-                            onChange={(e) => setPaperboardForm((f) => ({ ...f, clicheCost: e.target.value ? Number(e.target.value) : undefined }))}
+                            onChange={(e) =>
+                              setPaperboardForm((f) => ({
+                                ...f,
+                                clicheCost: e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined,
+                              }))
+                            }
                           />
                           <FormField
                             label="Preço do Clichê (R$)"
@@ -3910,13 +5045,22 @@ const BudgetsPage = () => {
                             min={0}
                             step="0.01"
                             value={paperboardForm.clichePrice ?? ""}
-                            onChange={(e) => setPaperboardForm((f) => ({ ...f, clichePrice: e.target.value ? Number(e.target.value) : undefined }))}
+                            onChange={(e) =>
+                              setPaperboardForm((f) => ({
+                                ...f,
+                                clichePrice: e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined,
+                              }))
+                            }
                           />
                         </div>
                       )}
 
                       {paperboardError && (
-                        <p className="text-sm text-destructive">{paperboardError}</p>
+                        <p className="text-sm text-destructive">
+                          {paperboardError}
+                        </p>
                       )}
 
                       <div className="flex gap-2">
@@ -3926,7 +5070,11 @@ const BudgetsPage = () => {
                           disabled={isSavingPaperboard}
                           className="px-3 py-1.5 text-xs font-bold rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
                         >
-                          {isSavingPaperboard ? "Salvando..." : paperboardConfig ? "Atualizar Configuração" : "Salvar Configuração"}
+                          {isSavingPaperboard
+                            ? "Salvando..."
+                            : paperboardConfig
+                              ? "Atualizar Configuração"
+                              : "Salvar Configuração"}
                         </button>
                         {paperboardConfig && (
                           <button
@@ -3949,28 +5097,45 @@ const BudgetsPage = () => {
               label="Observações"
               as="textarea"
               value={detailForm.notes}
-              onChange={(e) => setDetailForm((current) => ({ ...current, notes: e.target.value }))}
+              onChange={(e) =>
+                setDetailForm((current) => ({
+                  ...current,
+                  notes: e.target.value,
+                }))
+              }
               placeholder={PROPOSAL_NOTES_PLACEHOLDER}
             />
 
             <div className="flex justify-end gap-3">
-              {selectedBudget && (selectedBudget.status === "draft" || selectedBudget.status === "pending") && (
-                <button
-                  onClick={() => openPreApproveModal(selectedBudget)}
-                  disabled={Boolean(preApprovingId) || isUpdatingDetail || isLoadingDetail}
-                  className="px-4 py-2 text-sm rounded bg-blue-500 text-white font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {preApprovingId === selectedBudget.id ? "Aplicando custos..." : "Pre-aprovar e aplicar custos aplicaveis"}
-                </button>
-              )}
+              {selectedBudget &&
+                (selectedBudget.status === "draft" ||
+                  selectedBudget.status === "pending") && (
+                  <button
+                    onClick={() => openPreApproveModal(selectedBudget)}
+                    disabled={
+                      Boolean(preApprovingId) ||
+                      isUpdatingDetail ||
+                      isLoadingDetail
+                    }
+                    className="px-4 py-2 text-sm rounded bg-blue-500 text-white font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {preApprovingId === selectedBudget.id
+                      ? "Aplicando custos..."
+                      : "Pre-aprovar e aplicar custos aplicaveis"}
+                  </button>
+                )}
 
               {selectedBudget && selectedBudget.status === "pre_approved" && (
                 <button
                   onClick={() => openApproveModal(selectedBudget)}
-                  disabled={Boolean(approvingId) || isUpdatingDetail || isLoadingDetail}
+                  disabled={
+                    Boolean(approvingId) || isUpdatingDetail || isLoadingDetail
+                  }
                   className="px-4 py-2 text-sm rounded bg-success text-success-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {approvingId === selectedBudget.id ? "Aprovando..." : "Aprovar oficialmente"}
+                  {approvingId === selectedBudget.id
+                    ? "Aprovando..."
+                    : "Aprovar oficialmente"}
                 </button>
               )}
 
@@ -4000,24 +5165,44 @@ const BudgetsPage = () => {
       >
         <div className="space-y-5 max-h-[72vh] overflow-y-auto pr-1">
           <div className="border border-border rounded p-3 bg-secondary/20">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">Informações Fixas da Contratada</p>
-            <p className="text-sm text-foreground">MAIS QUIOSQUE GALPÃO PRODUÇÃO</p>
-            <p className="text-xs text-muted-foreground">Rua Professor Athanassof, 28 • Cid. Patriarca • São Paulo/SP</p>
-            <p className="text-xs text-muted-foreground">CNPJ 07.313.928/0001-75 • +55 11 98327-0902 • maisquiosque@hotmail.com</p>
-            <p className="text-xs text-muted-foreground mt-1">Assinatura fixa da contratada: Daniel De Souza (Executivo Comercial).</p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+              Informações Fixas da Contratada
+            </p>
+            <p className="text-sm text-foreground">4D PAPELAO - PRODUCAO</p>
+            <p className="text-xs text-muted-foreground">
+              Rua Professor Athanassof, 28 • Cid. Patriarca • São Paulo/SP
+            </p>
+            <p className="text-xs text-muted-foreground">
+              CNPJ 07.313.928/0001-75 • +55 11 98327-0902 •
+              comercial@4dpapelao.com.br
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Assinatura fixa da contratada: Daniel De Souza (Executivo
+              Comercial).
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
               label="Nome da Contratante"
               value={contractForm.contratanteName}
-              onChange={(e) => setContractForm((current) => ({ ...current, contratanteName: e.target.value }))}
+              onChange={(e) =>
+                setContractForm((current) => ({
+                  ...current,
+                  contratanteName: e.target.value,
+                }))
+              }
               placeholder="Ex.: Do Coco ao Cacau LTDA"
             />
             <FormField
               label="Nome da Operação/Cliente"
               value={contractForm.operationName}
-              onChange={(e) => setContractForm((current) => ({ ...current, operationName: e.target.value }))}
+              onChange={(e) =>
+                setContractForm((current) => ({
+                  ...current,
+                  operationName: e.target.value,
+                }))
+              }
               placeholder="Ex.: Do Coco ao Cacau"
             />
           </div>
@@ -4025,13 +5210,18 @@ const BudgetsPage = () => {
           <FormField
             label="Endereço da Obra"
             value={contractForm.projectAddress}
-            onChange={(e) => setContractForm((current) => ({ ...current, projectAddress: e.target.value }))}
+            onChange={(e) =>
+              setContractForm((current) => ({
+                ...current,
+                projectAddress: e.target.value,
+              }))
+            }
             placeholder="Endereço de entrega/instalação"
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
-              label="Largura do Quiosque (m)"
+              label="Largura do Projeto (m)"
               type="number"
               min={0.1}
               step="0.1"
@@ -4044,7 +5234,7 @@ const BudgetsPage = () => {
               }
             />
             <FormField
-              label="Profundidade do Quiosque (m)"
+              label="Profundidade do Projeto (m)"
               type="number"
               min={0.1}
               step="0.1"
@@ -4075,13 +5265,23 @@ const BudgetsPage = () => {
             <FormField
               label="Cidade da Assinatura"
               value={contractForm.signatureCity}
-              onChange={(e) => setContractForm((current) => ({ ...current, signatureCity: e.target.value }))}
+              onChange={(e) =>
+                setContractForm((current) => ({
+                  ...current,
+                  signatureCity: e.target.value,
+                }))
+              }
             />
             <FormField
               label="Data da Assinatura"
               type="date"
               value={contractForm.signatureDate}
-              onChange={(e) => setContractForm((current) => ({ ...current, signatureDate: e.target.value }))}
+              onChange={(e) =>
+                setContractForm((current) => ({
+                  ...current,
+                  signatureDate: e.target.value,
+                }))
+              }
             />
           </div>
 
@@ -4091,12 +5291,16 @@ const BudgetsPage = () => {
             </p>
 
             <p className="text-xs text-muted-foreground -mt-2">
-              Dica: use {'{{valor_contrato}}'} no conteúdo para inserir automaticamente o valor do contrato.
+              Dica: use {"{{valor_contrato}}"} no conteúdo para inserir
+              automaticamente o valor do contrato.
             </p>
 
             <div className="space-y-4">
               {contractForm.clauses.map((clause, index) => (
-                <div key={clause.id} className="rounded border border-border bg-background/60 p-3 space-y-3">
+                <div
+                  key={clause.id}
+                  className="rounded border border-border bg-background/60 p-3 space-y-3"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                       Cláusula {index + 1}
@@ -4114,7 +5318,9 @@ const BudgetsPage = () => {
                   <FormField
                     label="Nome da Cláusula"
                     value={clause.title}
-                    onChange={(e) => updateClause(clause.id, { title: e.target.value })}
+                    onChange={(e) =>
+                      updateClause(clause.id, { title: e.target.value })
+                    }
                   />
 
                   <FormField
@@ -4122,7 +5328,9 @@ const BudgetsPage = () => {
                     rows={6}
                     label="Conteúdo da Cláusula"
                     value={clause.content}
-                    onChange={(e) => updateClause(clause.id, { content: e.target.value })}
+                    onChange={(e) =>
+                      updateClause(clause.id, { content: e.target.value })
+                    }
                   />
                 </div>
               ))}
@@ -4139,7 +5347,9 @@ const BudgetsPage = () => {
             </div>
           </div>
 
-          {contractFormError && <p className="text-sm text-destructive">{contractFormError}</p>}
+          {contractFormError && (
+            <p className="text-sm text-destructive">{contractFormError}</p>
+          )}
 
           <div className="flex justify-end gap-3">
             <button
@@ -4153,7 +5363,9 @@ const BudgetsPage = () => {
               disabled={isGeneratingContract}
               className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isGeneratingContract ? "Gerando contrato..." : "Gerar Contrato PDF"}
+              {isGeneratingContract
+                ? "Gerando contrato..."
+                : "Gerar Contrato PDF"}
             </button>
           </div>
         </div>
