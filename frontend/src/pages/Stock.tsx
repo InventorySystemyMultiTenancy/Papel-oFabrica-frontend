@@ -131,7 +131,9 @@ const StockPage = () => {
   const [syncNotice, setSyncNotice] = useState("");
   const [total, setTotal] = useState(0);
   const [productFilter, setProductFilter] = useState("");
-  const [movementTypeFilter, setMovementTypeFilter] = useState<"" | StockMovementType>("");
+  const [movementTypeFilter, setMovementTypeFilter] = useState<
+    "" | StockMovementType
+  >("");
 
   const buildFilters = (): ListStockMovementsFilters => {
     const filters: ListStockMovementsFilters = {
@@ -183,7 +185,8 @@ const StockPage = () => {
 
   useEffect(() => {
     const handleInventoryChange = (event: Event) => {
-      const detail = (event as CustomEvent<InventoryDataChangedEventDetail>).detail;
+      const detail = (event as CustomEvent<InventoryDataChangedEventDetail>)
+        .detail;
 
       if (!detail) {
         return;
@@ -193,10 +196,16 @@ const StockPage = () => {
       void Promise.all([loadProductsData(), loadMovements()]);
     };
 
-    window.addEventListener(INVENTORY_DATA_CHANGED_EVENT, handleInventoryChange as EventListener);
+    window.addEventListener(
+      INVENTORY_DATA_CHANGED_EVENT,
+      handleInventoryChange as EventListener,
+    );
 
     return () => {
-      window.removeEventListener(INVENTORY_DATA_CHANGED_EVENT, handleInventoryChange as EventListener);
+      window.removeEventListener(
+        INVENTORY_DATA_CHANGED_EVENT,
+        handleInventoryChange as EventListener,
+      );
     };
   }, [productFilter, movementTypeFilter]);
 
@@ -276,7 +285,9 @@ const StockPage = () => {
 
       closeModal();
       await Promise.all([loadProductsData(), loadMovements()]);
-      setSyncNotice("Movimentacao registrada com sucesso e estoque atualizado no banco.");
+      setSyncNotice(
+        "Movimentacao registrada com sucesso e estoque atualizado no banco.",
+      );
       dispatchInventoryDataChanged({
         source: "stock-movement-create",
         referenceId: created.id,
@@ -299,22 +310,24 @@ const StockPage = () => {
     {
       key: "movementType",
       header: "Tipo",
-      render: (item: StockMovement) => <StatusBadge status={item.movementType} />,
+      render: (item: StockMovement) => (
+        <StatusBadge status={item.movementType} />
+      ),
     },
     {
       key: "quantity",
       header: "Qtd.",
       mono: true,
       render: (item: StockMovement) => (
-      <span className="flex items-center gap-1.5">
-        {item.movementType === "entrada" ? (
-          <ArrowUpCircle className="h-3.5 w-3.5 text-success" />
-        ) : (
-          <ArrowDownCircle className="h-3.5 w-3.5 text-destructive" />
-        )}
-        {item.quantity}
-      </span>
-    )
+        <span className="flex items-center gap-1.5">
+          {item.movementType === "entrada" ? (
+            <ArrowUpCircle className="h-3.5 w-3.5 text-success" />
+          ) : (
+            <ArrowDownCircle className="h-3.5 w-3.5 text-destructive" />
+          )}
+          {item.quantity}
+        </span>
+      ),
     },
     { key: "currentStock", header: "Saldo", mono: true },
     {
@@ -347,19 +360,19 @@ const StockPage = () => {
     <DashboardLayout
       title="Estoque"
       subtitle="Movimentacoes persistidas no banco"
-      action={
-        <button
-          onClick={() => {
-            setFormError("");
-            setModalOpen(true);
-          }}
-          className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
-        >
-          <Plus className="h-3.5 w-3.5" /> NOVA MOVIMENTAÇÃO
-        </button>
-      }
     >
       <div className="animate-fade-in space-y-6">
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              setFormError("");
+              setModalOpen(true);
+            }}
+            className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" /> NOVA MOVIMENTAÇÃO
+          </button>
+        </div>
         {requestError && (
           <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
             <span>{requestError}</span>
@@ -395,7 +408,9 @@ const StockPage = () => {
             as="select"
             value={movementTypeFilter}
             onChange={(event) =>
-              setMovementTypeFilter(event.target.value as "" | StockMovementType)
+              setMovementTypeFilter(
+                event.target.value as "" | StockMovementType,
+              )
             }
             options={[
               { value: "entrada", label: "Entrada" },
@@ -451,7 +466,12 @@ const StockPage = () => {
             label="Produto"
             as="select"
             value={form.productId}
-            onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                productId: event.target.value,
+              }))
+            }
             options={products.map((product) => ({
               value: product.id,
               label: `${product.name} (Saldo: ${product.stockQuantity})`,
@@ -481,7 +501,10 @@ const StockPage = () => {
               min={1}
               value={form.quantity}
               onChange={(event) =>
-                setForm((current) => ({ ...current, quantity: Number(event.target.value) }))
+                setForm((current) => ({
+                  ...current,
+                  quantity: Number(event.target.value),
+                }))
               }
             />
           </div>
@@ -490,14 +513,21 @@ const StockPage = () => {
             <FormField
               label="Unidade (opcional)"
               value={form.unit}
-              onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, unit: event.target.value }))
+              }
               placeholder="Ex.: unidade"
             />
 
             <FormField
               label="Motivo"
               value={form.reason}
-              onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  reason: event.target.value,
+                }))
+              }
               placeholder="Ex.: compra de reposicao"
             />
           </div>
@@ -507,7 +537,10 @@ const StockPage = () => {
               label="Tipo de referencia (opcional)"
               value={form.referenceType}
               onChange={(event) =>
-                setForm((current) => ({ ...current, referenceType: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  referenceType: event.target.value,
+                }))
               }
               placeholder="Ex.: ordem_producao"
             />
@@ -516,7 +549,10 @@ const StockPage = () => {
               label="ID de referencia (opcional)"
               value={form.referenceId}
               onChange={(event) =>
-                setForm((current) => ({ ...current, referenceId: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  referenceId: event.target.value,
+                }))
               }
               placeholder="Ex.: op-2026-001"
             />

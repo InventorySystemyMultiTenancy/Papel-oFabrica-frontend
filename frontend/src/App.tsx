@@ -12,20 +12,16 @@ import ForbiddenPage from "./pages/Forbidden.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ClientsPage from "./pages/Clients.tsx";
 import EmployeesPage from "./pages/Employees.tsx";
-import ProductsPage from "./pages/Products.tsx";
-import StockPage from "./pages/Stock.tsx";
+import StockHub from "./pages/StockHub.tsx";
 import BudgetsPage from "./pages/Budgets.tsx";
 import ProductionPage from "./pages/Production.tsx";
-import LogisticsPage from "./pages/Logistics.tsx";
+import LogisticsHub from "./pages/LogisticsHub.tsx";
 import ProductionTrackingPublicPage from "./pages/ProductionTrackingPublic.tsx";
 import OrdersPage from "./pages/Orders.tsx";
-import FinancialPage from "./pages/Financial.tsx";
+import FinancialHub from "./pages/FinancialHub.tsx";
 import ClichesPage from "./pages/Cliches.tsx";
-import AccountsPayablePage from "./pages/AccountsPayable.tsx";
-import DeliveryRoutesPage from "./pages/DeliveryRoutes.tsx";
 import WastePage from "./pages/Waste.tsx";
 import PurchaseOrdersPage from "./pages/PurchaseOrders.tsx";
-import ConsignedStockPage from "./pages/ConsignedStock.tsx";
 import PricingPage from "./pages/Pricing.tsx";
 import DashboardPage from "./pages/Dashboard.tsx";
 
@@ -49,7 +45,7 @@ const App = () => (
               <Route element={<RequireAuth />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/production" element={<ProductionPage />} />
-                <Route path="/logistics" element={<LogisticsPage />} />
+                <Route path="/logistics" element={<LogisticsHub />} />
                 <Route path="/forbidden" element={<ForbiddenPage />} />
 
                 <Route
@@ -57,28 +53,15 @@ const App = () => (
                 >
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/employees" element={<EmployeesPage />} />
-                  <Route path="/products" element={<ProductsPage />} />
-                  <Route path="/stock" element={<StockPage />} />
+                  <Route path="/products" element={<StockHub />} />
                   <Route path="/budgets" element={<BudgetsPage />} />
                   <Route path="/orders" element={<OrdersPage />} />
-                  <Route path="/financial" element={<FinancialPage />} />
+                  <Route path="/financial" element={<FinancialHub />} />
                   <Route path="/cliches" element={<ClichesPage />} />
-                  <Route
-                    path="/accounts-payable"
-                    element={<AccountsPayablePage />}
-                  />
-                  <Route
-                    path="/delivery-routes"
-                    element={<DeliveryRoutesPage />}
-                  />
                   <Route path="/waste" element={<WastePage />} />
                   <Route
                     path="/purchase-orders"
                     element={<PurchaseOrdersPage />}
-                  />
-                  <Route
-                    path="/consigned-stock"
-                    element={<ConsignedStockPage />}
                   />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />

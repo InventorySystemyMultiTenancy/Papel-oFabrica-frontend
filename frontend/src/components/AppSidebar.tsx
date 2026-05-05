@@ -3,18 +3,14 @@ import {
   Users,
   User,
   Box,
-  Package,
   FileText,
   Hammer,
   Truck,
   ShoppingCart,
   DollarSign,
   Tag,
-  CreditCard,
-  MapPin,
   Recycle,
   ShoppingBag,
-  Archive,
   Calculator,
   BarChart2,
 } from "lucide-react";
@@ -64,12 +60,6 @@ const navItems = [
     allowedRoles: ["admin", "gerente"],
   },
   {
-    title: "Movimentação de Estoque",
-    url: "/stock",
-    icon: Package,
-    allowedRoles: ["admin", "gerente"],
-  },
-  {
     title: "Orçamentos",
     url: "/budgets",
     icon: FileText,
@@ -106,18 +96,6 @@ const navItems = [
     allowedRoles: ["admin", "gerente"],
   },
   {
-    title: "Contas a Pagar",
-    url: "/accounts-payable",
-    icon: CreditCard,
-    allowedRoles: ["admin", "gerente"],
-  },
-  {
-    title: "Roteiros de Entrega",
-    url: "/delivery-routes",
-    icon: MapPin,
-    allowedRoles: ["admin", "gerente", "funcionario"],
-  },
-  {
     title: "Resíduos",
     url: "/waste",
     icon: Recycle,
@@ -127,12 +105,6 @@ const navItems = [
     title: "Pedidos de Compra",
     url: "/purchase-orders",
     icon: ShoppingBag,
-    allowedRoles: ["admin", "gerente"],
-  },
-  {
-    title: "Estoque Consignado",
-    url: "/consigned-stock",
-    icon: Archive,
     allowedRoles: ["admin", "gerente"],
   },
   {

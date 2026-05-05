@@ -79,7 +79,9 @@ const buildProductsSaveErrorMessage = (error: unknown, isEditing: boolean) => {
       case 403:
         return "Acesso negado para alterar produtos.";
       case 404:
-        return isEditing ? "Produto não encontrado." : "Registro não encontrado.";
+        return isEditing
+          ? "Produto não encontrado."
+          : "Registro não encontrado.";
       case 409:
         return "Já existe um produto com os mesmos dados.";
       case 500:
@@ -132,20 +134,29 @@ const ProductsPage = () => {
 
   useEffect(() => {
     const handleInventoryChange = (event: Event) => {
-      const detail = (event as CustomEvent<InventoryDataChangedEventDetail>).detail;
+      const detail = (event as CustomEvent<InventoryDataChangedEventDetail>)
+        .detail;
 
       if (!detail) {
         return;
       }
 
-      setSyncNotice("Produtos atualizados automaticamente apos movimentacao de estoque.");
+      setSyncNotice(
+        "Produtos atualizados automaticamente apos movimentacao de estoque.",
+      );
       void loadProducts(activeSearch);
     };
 
-    window.addEventListener(INVENTORY_DATA_CHANGED_EVENT, handleInventoryChange as EventListener);
+    window.addEventListener(
+      INVENTORY_DATA_CHANGED_EVENT,
+      handleInventoryChange as EventListener,
+    );
 
     return () => {
-      window.removeEventListener(INVENTORY_DATA_CHANGED_EVENT, handleInventoryChange as EventListener);
+      window.removeEventListener(
+        INVENTORY_DATA_CHANGED_EVENT,
+        handleInventoryChange as EventListener,
+      );
     };
   }, [activeSearch]);
 
@@ -164,7 +175,8 @@ const ProductsPage = () => {
       lowStockAlertQuantity: product.lowStockAlertQuantity,
       isPaperboardMaterial: product.isPaperboardMaterial ?? false,
       gramatura: product.gramatura != null ? String(product.gramatura) : "",
-      sheetsPerBundle: product.sheetsPerBundle != null ? String(product.sheetsPerBundle) : "",
+      sheetsPerBundle:
+        product.sheetsPerBundle != null ? String(product.sheetsPerBundle) : "",
     });
     setFormError("");
     setModalOpen(true);
@@ -191,7 +203,9 @@ const ProductsPage = () => {
 
   const saveProduct = async () => {
     const name = form.name.trim();
-    const lowStockAlertQuantity = Math.trunc(Number(form.lowStockAlertQuantity));
+    const lowStockAlertQuantity = Math.trunc(
+      Number(form.lowStockAlertQuantity),
+    );
 
     if (!name) {
       setFormError("Informe o nome do produto.");
@@ -203,7 +217,10 @@ const ProductsPage = () => {
       return;
     }
 
-    if (!editing && (!Number.isFinite(form.stockQuantity) || form.stockQuantity < 0)) {
+    if (
+      !editing &&
+      (!Number.isFinite(form.stockQuantity) || form.stockQuantity < 0)
+    ) {
       setFormError("Informe um estoque inicial válido.");
       return;
     }
@@ -219,8 +236,14 @@ const ProductsPage = () => {
     try {
       const paperboardFields = {
         isPaperboardMaterial: form.isPaperboardMaterial,
-        gramatura: form.isPaperboardMaterial && form.gramatura.trim() ? Number(form.gramatura) : null,
-        sheetsPerBundle: form.isPaperboardMaterial && form.sheetsPerBundle.trim() ? Number(form.sheetsPerBundle) : null,
+        gramatura:
+          form.isPaperboardMaterial && form.gramatura.trim()
+            ? Number(form.gramatura)
+            : null,
+        sheetsPerBundle:
+          form.isPaperboardMaterial && form.sheetsPerBundle.trim()
+            ? Number(form.sheetsPerBundle)
+            : null,
       };
 
       if (editing) {
@@ -277,7 +300,9 @@ const ProductsPage = () => {
         return (
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
-              needsPurchase ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"
+              needsPurchase
+                ? "bg-destructive/20 text-destructive"
+                : "bg-success/20 text-success"
             }`}
           >
             {needsPurchase ? "Precisa comprar" : "Em estoque"}
@@ -321,16 +346,16 @@ const ProductsPage = () => {
     <DashboardLayout
       title="Produtos"
       subtitle="Cadastro remoto e saldo atual no banco"
-      action={
-        <button
-          onClick={openNew}
-          className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
-        >
-          <Plus className="h-3.5 w-3.5" /> NOVO PRODUTO
-        </button>
-      }
     >
       <div className="animate-fade-in space-y-6">
+        <div className="flex justify-end">
+          <button
+            onClick={openNew}
+            className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" /> NOVO PRODUTO
+          </button>
+        </div>
         {syncNotice && (
           <div className="border border-success/30 bg-success/10 rounded px-3 py-2 text-sm text-success">
             {syncNotice}
@@ -389,9 +414,7 @@ const ProductsPage = () => {
                 : "Nenhum produto cadastrado no banco."
           }
           rowHighlight={(item: Product) =>
-            item.stockQuantity <= 0
-              ? "border-l-2 border-l-destructive"
-              : ""
+            item.stockQuantity <= 0 ? "border-l-2 border-l-destructive" : ""
           }
         />
       </div>
@@ -405,7 +428,9 @@ const ProductsPage = () => {
           <FormField
             label="Nome"
             value={form.name}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, name: event.target.value }))
+            }
             placeholder="Nome do produto"
           />
 
@@ -467,11 +492,18 @@ const ProductsPage = () => {
                 type="checkbox"
                 checked={form.isPaperboardMaterial}
                 onChange={(e) =>
-                  setForm((prev) => ({ ...prev, isPaperboardMaterial: e.target.checked, gramatura: "", sheetsPerBundle: "" }))
+                  setForm((prev) => ({
+                    ...prev,
+                    isPaperboardMaterial: e.target.checked,
+                    gramatura: "",
+                    sheetsPerBundle: "",
+                  }))
                 }
                 className="rounded border-border"
               />
-              <span className="text-sm font-medium">É matéria-prima de papelão</span>
+              <span className="text-sm font-medium">
+                É matéria-prima de papelão
+              </span>
             </label>
 
             {form.isPaperboardMaterial && (
@@ -481,7 +513,9 @@ const ProductsPage = () => {
                   type="number"
                   min={0}
                   value={form.gramatura}
-                  onChange={(e) => setForm((prev) => ({ ...prev, gramatura: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, gramatura: e.target.value }))
+                  }
                   placeholder="Ex.: 200"
                 />
                 <FormField
@@ -489,7 +523,12 @@ const ProductsPage = () => {
                   type="number"
                   min={0}
                   value={form.sheetsPerBundle}
-                  onChange={(e) => setForm((prev) => ({ ...prev, sheetsPerBundle: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      sheetsPerBundle: e.target.value,
+                    }))
+                  }
                   placeholder="Ex.: 500"
                 />
               </div>

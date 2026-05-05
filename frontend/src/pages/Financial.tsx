@@ -25,19 +25,31 @@ const StatCard = ({
   positive?: boolean;
 }) => (
   <div className="border border-border rounded-lg p-4 bg-card flex items-center gap-4">
-    <div className={`p-2 rounded-lg ${positive === undefined ? "bg-secondary" : positive ? "bg-green-500/15" : "bg-destructive/15"}`}>
-      <Icon className={`h-5 w-5 ${positive === undefined ? "text-muted-foreground" : positive ? "text-green-500" : "text-destructive"}`} />
+    <div
+      className={`p-2 rounded-lg ${positive === undefined ? "bg-secondary" : positive ? "bg-green-500/15" : "bg-destructive/15"}`}
+    >
+      <Icon
+        className={`h-5 w-5 ${positive === undefined ? "text-muted-foreground" : positive ? "text-green-500" : "text-destructive"}`}
+      />
     </div>
     <div>
-      <p className="text-xs text-muted-foreground uppercase tracking-wider">{title}</p>
-      <p className={`text-lg font-bold ${positive === undefined ? "" : positive ? "text-green-500" : "text-destructive"}`}>
+      <p className="text-xs text-muted-foreground uppercase tracking-wider">
+        {title}
+      </p>
+      <p
+        className={`text-lg font-bold ${positive === undefined ? "" : positive ? "text-green-500" : "text-destructive"}`}
+      >
         {formatCurrency(value)}
       </p>
     </div>
   </div>
 );
 
-const BarChart = ({ data }: { data: Array<{ month: string; amount: number }> }) => {
+const BarChart = ({
+  data,
+}: {
+  data: Array<{ month: string; amount: number }>;
+}) => {
   const max = Math.max(...data.map((d) => d.amount), 1);
   return (
     <div className="border border-border rounded-lg p-4 bg-card">
@@ -49,13 +61,20 @@ const BarChart = ({ data }: { data: Array<{ month: string; amount: number }> }) 
           {data.map((d) => {
             const pct = (d.amount / max) * 100;
             return (
-              <div key={d.month} className="flex flex-col items-center gap-1 min-w-[56px]">
-                <span className="text-[10px] font-mono text-muted-foreground">{formatCurrency(d.amount).replace("R$\u00a0", "R$ ")}</span>
+              <div
+                key={d.month}
+                className="flex flex-col items-center gap-1 min-w-[56px]"
+              >
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {formatCurrency(d.amount).replace("R$\u00a0", "R$ ")}
+                </span>
                 <div
                   className="w-10 bg-primary rounded-t transition-all"
                   style={{ height: `${Math.max(4, (pct / 100) * 120)}px` }}
                 />
-                <span className="text-[10px] text-muted-foreground text-center leading-tight">{formatMonth(d.month)}</span>
+                <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                  {formatMonth(d.month)}
+                </span>
               </div>
             );
           })}
@@ -77,7 +96,11 @@ const FinancialPage = () => {
       const data = await getCashflow();
       setSummary(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Não foi possível carregar o resumo financeiro.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível carregar o resumo financeiro.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -91,18 +114,20 @@ const FinancialPage = () => {
     <DashboardLayout
       title="Financeiro"
       subtitle="Fluxo de caixa e contas a receber"
-      action={
-        <button
-          onClick={() => void loadData()}
-          disabled={isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border border-border hover:bg-secondary transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          Atualizar
-        </button>
-      }
     >
       <div className="animate-fade-in space-y-6">
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => void loadData()}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border border-border hover:bg-secondary transition-colors disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+            />
+            Atualizar
+          </button>
+        </div>
         {error && (
           <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
             <span>{error}</span>
@@ -116,7 +141,9 @@ const FinancialPage = () => {
         )}
 
         {isLoading && !summary ? (
-          <p className="text-sm text-muted-foreground">Carregando resumo financeiro...</p>
+          <p className="text-sm text-muted-foreground">
+            Carregando resumo financeiro...
+          </p>
         ) : summary ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -156,8 +183,12 @@ const FinancialPage = () => {
                     <tbody className="divide-y divide-border">
                       {summary.receivablesByMonth.map((row) => (
                         <tr key={row.month}>
-                          <td className="py-2 pr-4">{formatMonth(row.month)}</td>
-                          <td className="py-2 text-right font-mono text-green-500">{formatCurrency(row.amount)}</td>
+                          <td className="py-2 pr-4">
+                            {formatMonth(row.month)}
+                          </td>
+                          <td className="py-2 text-right font-mono text-green-500">
+                            {formatCurrency(row.amount)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -165,7 +196,12 @@ const FinancialPage = () => {
                       <tr className="border-t-2 border-border font-bold">
                         <td className="pt-2 pr-4">Total</td>
                         <td className="pt-2 text-right font-mono text-green-500">
-                          {formatCurrency(summary.receivablesByMonth.reduce((s, r) => s + r.amount, 0))}
+                          {formatCurrency(
+                            summary.receivablesByMonth.reduce(
+                              (s, r) => s + r.amount,
+                              0,
+                            ),
+                          )}
                         </td>
                       </tr>
                     </tfoot>

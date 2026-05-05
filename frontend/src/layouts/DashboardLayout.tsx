@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, createContext, useContext } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopNav } from "@/components/TopNav";
 
@@ -9,8 +9,24 @@ interface DashboardLayoutProps {
   action?: ReactNode;
 }
 
-export function DashboardLayout({ children, title, subtitle, action }: DashboardLayoutProps) {
+/**
+ * When true, DashboardLayout renders only its children (no sidebar/topnav).
+ * Hub pages set this to true so embedded sub-pages skip the outer chrome.
+ */
+export const EmbeddedContext = createContext(false);
+
+export function DashboardLayout({
+  children,
+  title,
+  subtitle,
+  action,
+}: DashboardLayoutProps) {
+  const isEmbedded = useContext(EmbeddedContext);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  if (isEmbedded) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
@@ -25,7 +41,9 @@ export function DashboardLayout({ children, title, subtitle, action }: Dashboard
           action={action}
           onToggleSidebar={() => setMobileSidebarOpen((current) => !current)}
         />
-        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 overflow-auto">{children}</main>
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 overflow-auto">
+          {children}
+        </main>
       </div>
     </div>
   );
