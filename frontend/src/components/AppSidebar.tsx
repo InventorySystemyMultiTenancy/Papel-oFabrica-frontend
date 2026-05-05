@@ -61,15 +61,18 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
 
   const renderSidebarContent = (isMobile = false) => (
     <>
-      <div className="h-14 px-4 sm:px-5 flex items-center gap-3 border-b border-border">
+      <div className="h-14 px-4 sm:px-5 flex items-center gap-3 border-b border-white/10">
         <img
           src="/4d.jpg"
           alt={t("Logo 4d embalagens")}
           className="w-10 h-10 sm:w-12 sm:h-12 rounded-sm object-cover"
         />
-        <span className="font-bold tracking-tight text-sm sm:text-base bg-gradient-to-r from-[#F9E27D] via-[#D4AF37] to-[#A67C00] bg-clip-text text-transparent drop-shadow-[0_1px_2px_rgba(94,61,0,0.45)]">
-          Mais Quiosque
-        </span>
+        <div className="min-w-0">
+          <span className="block font-bold tracking-tight text-sm sm:text-base text-orange-400">
+            4D Embalagens
+          </span>
+          <span className="block text-[10px] tracking-widest text-white/45 uppercase">Indústria de Papelão</span>
+        </div>
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
@@ -88,8 +91,8 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
               }}
               className={`flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
                 isActive
-                  ? "bg-secondary text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  ? "bg-white/15 text-white font-semibold"
+                  : "text-white/65 hover:text-white hover:bg-white/10"
               }`}
               activeClassName=""
             >
@@ -100,7 +103,7 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
         })}
       </nav>
 
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-white/10">
         {user && (
           <div className="mb-3">
             <p className="text-xs font-medium text-foreground truncate">{user.name}</p>
@@ -110,12 +113,12 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
 
         <button
           onClick={handleLogout}
-          className="w-full mb-2 px-3 py-2 text-xs rounded border border-border hover:bg-secondary transition-colors text-muted-foreground"
+          className="w-full mb-2 px-3 py-2 text-xs rounded border border-white/20 hover:bg-white/10 transition-colors text-white/70 hover:text-white"
         >
           {t("Sair")}
         </button>
 
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{t("Marcenaria v1.0")}</p>
+        <p className="text-[10px] uppercase tracking-widest text-orange-400/70">{t("Indústria de Papelão v1.0")}</p>
       </div>
     </>
   );
