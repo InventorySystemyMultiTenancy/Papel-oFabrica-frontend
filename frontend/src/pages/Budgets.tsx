@@ -1360,12 +1360,15 @@ const BudgetsPage = () => {
     setSelectedToPreApprove(null);
   };
 
-  const confirmPreApproveBudget = async () => {
-    if (!selectedToPreApprove || preApprovingId) {
+  const executePreApproveBudget = async (
+    budget: BudgetRow,
+    options?: { costsApplicableValue?: number },
+  ) => {
+    if (preApprovingId) {
       return;
     }
 
-    const budgetId = selectedToPreApprove.id;
+    const budgetId = budget.id;
     setPreApprovingId(budgetId);
     setRequestError("");
 
@@ -1375,20 +1378,11 @@ const BudgetsPage = () => {
         costsApplicableValue?: number;
       } = { status: "pre_approved" };
 
-      const shouldUseDetailCostsApplicableValue =
-        detailModalOpen && selectedBudget?.id === budgetId;
-
-      if (shouldUseDetailCostsApplicableValue) {
-        preApprovePayload.costsApplicableValue = Math.max(
+      preApprovePayload.costsApplicableValue = Math.max(
+        0,
+        Number(options?.costsApplicableValue ?? budget.costsApplicableValue) ||
           0,
-          Number(detailForm.costsApplicableValue) || 0,
-        );
-      } else {
-        preApprovePayload.costsApplicableValue = Math.max(
-          0,
-          Number(selectedToPreApprove.costsApplicableValue) || 0,
-        );
-      }
+      );
 
       const updated = mapBudgetFromApi(
         await updateBudget(budgetId, preApprovePayload),
@@ -1431,6 +1425,47 @@ const BudgetsPage = () => {
     } finally {
       setPreApprovingId(null);
     }
+  };
+
+  const confirmPreApproveBudget = async () => {
+    if (!selectedToPreApprove || preApprovingId) {
+      return;
+    }
+
+    const shouldUseDetailCostsApplicableValue =
+      detailModalOpen && selectedBudget?.id === selectedToPreApprove.id;
+
+    await executePreApproveBudget(selectedToPreApprove, {
+      costsApplicableValue: shouldUseDetailCostsApplicableValue
+        ? Math.max(0, Number(detailForm.costsApplicableValue) || 0)
+        : Math.max(0, Number(selectedToPreApprove.costsApplicableValue) || 0),
+    });
+  };
+
+  const handleDetailPreApproveClick = async () => {
+    if (
+      !selectedBudget ||
+      preApprovingId ||
+      isUpdatingDetail ||
+      isLoadingDetail
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Confirma pre-aprovar este orçamento e aplicar apenas os custos aplicáveis agora?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await executePreApproveBudget(selectedBudget, {
+      costsApplicableValue: Math.max(
+        0,
+        Number(detailForm.costsApplicableValue) || 0,
+      ),
+    });
   };
 
   const openApproveModal = (budget: BudgetRow) => {
@@ -5315,7 +5350,7 @@ const BudgetsPage = () => {
                 (selectedBudget.status === "draft" ||
                   selectedBudget.status === "pending") && (
                   <button
-                    onClick={() => openPreApproveModal(selectedBudget)}
+                    onClick={() => void handleDetailPreApproveClick()}
                     disabled={
                       Boolean(preApprovingId) ||
                       isUpdatingDetail ||
