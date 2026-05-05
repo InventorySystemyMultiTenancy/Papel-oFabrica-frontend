@@ -10,7 +10,6 @@ import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
-import { listTeams } from "@/services/teams";
 import { Budget, listBudgets } from "@/services/budgets";
 import {
   AdvanceProductionStatusInput,
@@ -152,7 +151,9 @@ const buildImageErrorMessage = (error: unknown) => {
       case 500:
         return "Erro interno ao processar imagens da producao.";
       default:
-        return error.message || "Nao foi possivel processar imagens desta producao.";
+        return (
+          error.message || "Nao foi possivel processar imagens desta producao."
+        );
     }
   }
 
@@ -163,11 +164,6 @@ const buildImageErrorMessage = (error: unknown) => {
   return "Nao foi possivel processar imagens desta producao.";
 };
 
-interface TeamOption {
-  id: string;
-  name: string;
-}
-
 type StageInputMode = "existing" | "new";
 
 interface StatusEditorRow {
@@ -175,7 +171,6 @@ interface StatusEditorRow {
   mode: StageInputMode;
   stageId: string;
   stageName: string;
-  teamId: string;
 }
 
 const createStatusEditorRow = (): StatusEditorRow => ({
@@ -183,7 +178,6 @@ const createStatusEditorRow = (): StatusEditorRow => ({
   mode: "existing",
   stageId: "",
   stageName: "",
-  teamId: "",
 });
 
 const createMockOrdersSnapshot = () =>
@@ -192,17 +186,10 @@ const createMockOrdersSnapshot = () =>
     materials: order.materials.map((material) => ({ ...material })),
   }));
 
-const createMockTeamsSnapshot = (): TeamOption[] => {
-  const names = Array.from(new Set(mockOrders.map((order) => order.installationTeam).filter(Boolean)));
-
-  return names.map((name, index) => ({
-    id: `mock-team-${index + 1}`,
-    name,
-  }));
-};
-
 const createMockClientsSnapshot = (): Client[] => {
-  const names = Array.from(new Set(mockOrders.map((order) => order.clientName).filter(Boolean)));
+  const names = Array.from(
+    new Set(mockOrders.map((order) => order.clientName).filter(Boolean)),
+  );
 
   return names.map((name, index) => ({
     id: `mock-client-${index + 1}`,
@@ -244,23 +231,26 @@ const createInitialForm = () => ({
 
 const ProductionPage = () => {
   const { user } = useAuth();
-  const { canCreateProduction, canCompleteProduction, isEmployee } = useRoleAccess();
+  const { canCreateProduction, canCompleteProduction, isEmployee } =
+    useRoleAccess();
 
   const [data, setData] = useState<EmployeeProduction[]>([]);
   const [modal, setModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingTeams, setIsLoadingTeams] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [requestError, setRequestError] = useState("");
   const [modeNotice, setModeNotice] = useState("");
   const [isMockMode, setIsMockMode] = useState(false);
-  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [clientsCatalog, setClientsCatalog] = useState<Client[]>([]);
   const [productsCatalog, setProductsCatalog] = useState<Product[]>([]);
-  const [approvedBudgetsCatalog, setApprovedBudgetsCatalog] = useState<Budget[]>([]);
-  const [statusOptions, setStatusOptions] = useState<ProductionStatusOption[]>([]);
+  const [approvedBudgetsCatalog, setApprovedBudgetsCatalog] = useState<
+    Budget[]
+  >([]);
+  const [statusOptions, setStatusOptions] = useState<ProductionStatusOption[]>(
+    [],
+  );
   const [isLoadingStatusOptions, setIsLoadingStatusOptions] = useState(false);
   const [statusOptionsError, setStatusOptionsError] = useState("");
   const [isLoadingClients, setIsLoadingClients] = useState(false);
@@ -271,21 +261,35 @@ const ProductionPage = () => {
   const [budgetsError, setBudgetsError] = useState("");
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState(createInitialForm);
-  const [newMaterial, setNewMaterial] = useState({ productId: "", quantity: 1, unit: "unidade" });
-  const [selectedToAdvance, setSelectedToAdvance] = useState<EmployeeProduction | null>(null);
+  const [newMaterial, setNewMaterial] = useState({
+    productId: "",
+    quantity: 1,
+    unit: "unidade",
+  });
+  const [selectedToAdvance, setSelectedToAdvance] =
+    useState<EmployeeProduction | null>(null);
   const [advanceMode, setAdvanceMode] = useState<StageInputMode>("existing");
   const [advanceStageId, setAdvanceStageId] = useState("");
   const [advanceStageName, setAdvanceStageName] = useState("");
-  const [advanceTeamId, setAdvanceTeamId] = useState("");
   const [advanceError, setAdvanceError] = useState("");
-  const [selectedToEditStatuses, setSelectedToEditStatuses] = useState<EmployeeProduction | null>(null);
-  const [statusEditorRows, setStatusEditorRows] = useState<StatusEditorRow[]>([]);
+  const [selectedToEditStatuses, setSelectedToEditStatuses] =
+    useState<EmployeeProduction | null>(null);
+  const [statusEditorRows, setStatusEditorRows] = useState<StatusEditorRow[]>(
+    [],
+  );
   const [statusEditorError, setStatusEditorError] = useState("");
   const [completionError, setCompletionError] = useState("");
-  const [completionErrorStatus, setCompletionErrorStatus] = useState<number | null>(null);
-  const [completionDetails, setCompletionDetails] = useState<CompleteProductionStockDetail[]>([]);
-  const [selectedForImages, setSelectedForImages] = useState<EmployeeProduction | null>(null);
-  const [productionImages, setProductionImages] = useState<ProductionImage[]>([]);
+  const [completionErrorStatus, setCompletionErrorStatus] = useState<
+    number | null
+  >(null);
+  const [completionDetails, setCompletionDetails] = useState<
+    CompleteProductionStockDetail[]
+  >([]);
+  const [selectedForImages, setSelectedForImages] =
+    useState<EmployeeProduction | null>(null);
+  const [productionImages, setProductionImages] = useState<ProductionImage[]>(
+    [],
+  );
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
@@ -308,17 +312,23 @@ const ProductionPage = () => {
 
   const findClientByName = (clientName: string) => {
     const normalized = normalizeName(clientName);
-    return clientsCatalog.find((client) => normalizeName(client.name) === normalized);
+    return clientsCatalog.find(
+      (client) => normalizeName(client.name) === normalized,
+    );
   };
 
   const findProductByName = (productName: string) => {
     const normalized = normalizeName(productName);
-    return productsCatalog.find((product) => normalizeName(product.name) === normalized);
+    return productsCatalog.find(
+      (product) => normalizeName(product.name) === normalized,
+    );
   };
 
   const resolveBudgetApplicableCost = (budget: Budget) => {
     const fromSummary = Number(
-      budget.financialSummary?.costsApplicableValue ?? budget.costsApplicableValue ?? 0,
+      budget.financialSummary?.costsApplicableValue ??
+        budget.costsApplicableValue ??
+        0,
     );
 
     if (Number.isFinite(fromSummary) && fromSummary > 0) {
@@ -327,7 +337,10 @@ const ProductionPage = () => {
 
     return Math.max(
       0,
-      (budget.applicableCosts || []).reduce((sum, cost) => sum + (Number(cost.amount) || 0), 0),
+      (budget.applicableCosts || []).reduce(
+        (sum, cost) => sum + (Number(cost.amount) || 0),
+        0,
+      ),
     );
   };
 
@@ -339,7 +352,9 @@ const ProductionPage = () => {
     }
 
     const materialCost = (budget.materials || []).reduce(
-      (sum, material) => sum + (Number(material.unitPrice) || 0) * (Number(material.quantity) || 0),
+      (sum, material) =>
+        sum +
+        (Number(material.unitPrice) || 0) * (Number(material.quantity) || 0),
       0,
     );
     const departmentsCost = (budget.expenseDepartments || []).reduce(
@@ -349,7 +364,10 @@ const ProductionPage = () => {
     const laborCost = Math.max(0, Number(budget.laborCost) || 0);
     const applicableCost = resolveBudgetApplicableCost(budget);
 
-    return Math.max(0, materialCost + departmentsCost + laborCost + applicableCost);
+    return Math.max(
+      0,
+      materialCost + departmentsCost + laborCost + applicableCost,
+    );
   };
 
   const resolveBudgetProfit = (budget: Budget) => {
@@ -369,7 +387,9 @@ const ProductionPage = () => {
     if (isDevelopment && !isApiConfigured) {
       setData(createMockOrdersSnapshot());
       setIsMockMode(true);
-      setModeNotice("Modo local ativo: usando dados mock porque VITE_API_URL não está configurado.");
+      setModeNotice(
+        "Modo local ativo: usando dados mock porque VITE_API_URL não está configurado.",
+      );
       setIsLoading(false);
       return;
     }
@@ -384,47 +404,28 @@ const ProductionPage = () => {
 
     try {
       const employeeId = isEmployee ? user?.id : undefined;
-      const list = await listProductions(employeeId ? { employeeId } : undefined);
+      const list = await listProductions(
+        employeeId ? { employeeId } : undefined,
+      );
       setData(list);
       setIsMockMode(false);
       setModeNotice("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao carregar produções.";
+      const message =
+        error instanceof Error ? error.message : "Falha ao carregar produções.";
 
       if (isDevelopment) {
         setData(createMockOrdersSnapshot());
         setIsMockMode(true);
-        setModeNotice("Backend indisponível. Exibindo dados mock para continuar em desenvolvimento.");
+        setModeNotice(
+          "Backend indisponível. Exibindo dados mock para continuar em desenvolvimento.",
+        );
       } else {
         setRequestError(`Não foi possível carregar dados do banco: ${message}`);
         setData([]);
       }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadTeams = async () => {
-    if (!canCreateProduction) {
-      setTeams([]);
-      setIsLoadingTeams(false);
-      return;
-    }
-
-    setIsLoadingTeams(true);
-
-    try {
-      const teamsData = await listTeams();
-      const nextTeams = teamsData.map((team) => ({ id: team.id, name: team.name }));
-      setTeams(nextTeams);
-    } catch {
-      if (isDevelopment) {
-        setTeams(createMockTeamsSnapshot());
-      } else {
-        setTeams([]);
-      }
-    } finally {
-      setIsLoadingTeams(false);
     }
   };
 
@@ -443,8 +444,11 @@ const ProductionPage = () => {
       setStatusOptions(options);
     } catch (error) {
       setStatusOptions([]);
-      const message = error instanceof Error ? error.message : "Falha ao carregar etapas.";
-      setStatusOptionsError(`Nao foi possivel carregar opcoes de etapas: ${message}`);
+      const message =
+        error instanceof Error ? error.message : "Falha ao carregar etapas.";
+      setStatusOptionsError(
+        `Nao foi possivel carregar opcoes de etapas: ${message}`,
+      );
     } finally {
       setIsLoadingStatusOptions(false);
     }
@@ -466,7 +470,8 @@ const ProductionPage = () => {
       setProductsCatalog(products);
     } catch (error) {
       setProductsCatalog([]);
-      const message = error instanceof Error ? error.message : "Falha ao carregar produtos.";
+      const message =
+        error instanceof Error ? error.message : "Falha ao carregar produtos.";
       setProductsError(`Nao foi possivel carregar produtos: ${message}`);
     } finally {
       setIsLoadingProducts(false);
@@ -491,8 +496,13 @@ const ProductionPage = () => {
       );
     } catch (error) {
       setApprovedBudgetsCatalog([]);
-      const message = error instanceof Error ? error.message : "Falha ao carregar orcamentos aprovados.";
-      setBudgetsError(`Nao foi possivel carregar orcamentos aprovados: ${message}`);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Falha ao carregar orcamentos aprovados.";
+      setBudgetsError(
+        `Nao foi possivel carregar orcamentos aprovados: ${message}`,
+      );
     } finally {
       setIsLoadingBudgets(false);
     }
@@ -518,7 +528,10 @@ const ProductionPage = () => {
         setClientsError("");
       } else {
         setClientsCatalog([]);
-        const message = error instanceof Error ? error.message : "Falha ao carregar clientes.";
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Falha ao carregar clientes.";
         setClientsError(`Nao foi possivel carregar clientes: ${message}`);
       }
     } finally {
@@ -528,7 +541,6 @@ const ProductionPage = () => {
 
   useEffect(() => {
     void loadProductions();
-    void loadTeams();
     void loadStatusOptions();
   }, [canCreateProduction, canCompleteProduction, isEmployee, user?.id]);
 
@@ -543,12 +555,16 @@ const ProductionPage = () => {
   }, [modal, canCreateProduction]);
 
   const selectedApprovedBudget = useMemo(
-    () => approvedBudgetsCatalog.find((budget) => budget.id === form.budgetId) || null,
+    () =>
+      approvedBudgetsCatalog.find((budget) => budget.id === form.budgetId) ||
+      null,
     [approvedBudgetsCatalog, form.budgetId],
   );
 
   const applyApprovedBudgetToForm = (budgetId: string) => {
-    const selectedBudget = approvedBudgetsCatalog.find((budget) => budget.id === budgetId);
+    const selectedBudget = approvedBudgetsCatalog.find(
+      (budget) => budget.id === budgetId,
+    );
 
     if (!selectedBudget) {
       setForm((current) => ({
@@ -579,14 +595,18 @@ const ProductionPage = () => {
           unit: material.unit || "unidade",
         };
       })
-      .filter((material): material is ProductionMaterial => Boolean(material) && material.quantity > 0);
+      .filter(
+        (material): material is ProductionMaterial =>
+          Boolean(material) && material.quantity > 0,
+      );
 
     setForm((current) => ({
       ...current,
       budgetId,
       clientId: linkedClient?.id || current.clientId,
       description: selectedBudget.description || current.description,
-      deliveryDate: normalizeDateOnly(selectedBudget.deliveryDate) || current.deliveryDate,
+      deliveryDate:
+        normalizeDateOnly(selectedBudget.deliveryDate) || current.deliveryDate,
       initialCost: resolveBudgetTotalCost(selectedBudget),
       materials: mappedMaterials,
     }));
@@ -617,7 +637,9 @@ const ProductionPage = () => {
     }
 
     setForm((current) => {
-      const existingIdx = current.materials.findIndex((m) => m.productId === product.id);
+      const existingIdx = current.materials.findIndex(
+        (m) => m.productId === product.id,
+      );
 
       if (existingIdx >= 0) {
         const updated = [...current.materials];
@@ -795,7 +817,10 @@ const ProductionPage = () => {
       setProductionImages(images);
     } catch (error) {
       if (error instanceof ProductionImageError && error.status === 401) {
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/login"
+        ) {
           window.location.assign("/login");
         }
 
@@ -820,7 +845,9 @@ const ProductionPage = () => {
     clearSelectedFiles();
 
     if (isMockMode) {
-      setImagesError("No modo local/mock, o upload de imagens nao esta disponivel.");
+      setImagesError(
+        "No modo local/mock, o upload de imagens nao esta disponivel.",
+      );
       return;
     }
 
@@ -839,7 +866,9 @@ const ProductionPage = () => {
     }
 
     if (isMockMode) {
-      setImagesError("No modo local/mock, o upload de imagens nao esta disponivel.");
+      setImagesError(
+        "No modo local/mock, o upload de imagens nao esta disponivel.",
+      );
       return;
     }
 
@@ -863,7 +892,10 @@ const ProductionPage = () => {
       });
     } catch (error) {
       if (error instanceof ProductionImageError && error.status === 401) {
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/login"
+        ) {
           window.location.assign("/login");
         }
 
@@ -893,11 +925,12 @@ const ProductionPage = () => {
       !form.clientId ||
       !form.description.trim() ||
       !form.deliveryDate ||
-      !form.installationTeamId ||
       form.initialCost <= 0 ||
       form.materials.length === 0
     ) {
-      setFormError("Preencha cliente, descrição, prazo, equipe, custo inicial e pelo menos um material.");
+      setFormError(
+        "Preencha cliente, descrição, prazo, custo inicial e pelo menos um material.",
+      );
       return;
     }
 
@@ -906,7 +939,9 @@ const ProductionPage = () => {
     );
 
     if (hasInvalidMaterial) {
-      setFormError("Todos os materiais devem estar vinculados a um produto do banco.");
+      setFormError(
+        "Todos os materiais devem estar vinculados a um produto do banco.",
+      );
       return;
     }
 
@@ -917,8 +952,6 @@ const ProductionPage = () => {
       return;
     }
 
-    const selectedTeam = teams.find((team) => team.id === form.installationTeamId);
-
     if (isMockMode) {
       const newOrder: EmployeeProduction = {
         id: `mock-${Date.now()}`,
@@ -926,11 +959,12 @@ const ProductionPage = () => {
         description: form.description.trim(),
         productionStatus: "pending",
         deliveryDate: form.deliveryDate,
-        installationTeam: selectedTeam?.name || "A definir",
+        installationTeam: null,
         initialCost: Number(form.initialCost),
         materials: form.materials.map((material) => ({ ...material })),
         productionType: (form.productionType as "corte" | "vinco") || null,
-        productionLocation: (form.productionLocation as "interno" | "terceirizado") || null,
+        productionLocation:
+          (form.productionLocation as "interno" | "terceirizado") || null,
         lossPercentage: Number(form.lossPercentage) || 0,
         orderId: form.orderId || null,
       };
@@ -947,21 +981,26 @@ const ProductionPage = () => {
       await createProduction({
         clientName: client.name,
         description: form.description.trim(),
-        deliveryDate: form.deliveryDate ? new Date(`${form.deliveryDate}T00:00:00`).toISOString() : null,
-        installationTeamId: form.installationTeamId,
+        deliveryDate: form.deliveryDate
+          ? new Date(`${form.deliveryDate}T00:00:00`).toISOString()
+          : null,
         budgetId: form.budgetId || undefined,
         initialCost: Number(form.initialCost),
         materials: form.materials,
         productionType: (form.productionType as "corte" | "vinco") || null,
-        productionLocation: (form.productionLocation as "interno" | "terceirizado") || null,
-        lossPercentage: form.lossPercentage ? Number(form.lossPercentage) : undefined,
+        productionLocation:
+          (form.productionLocation as "interno" | "terceirizado") || null,
+        lossPercentage: form.lossPercentage
+          ? Number(form.lossPercentage)
+          : undefined,
         orderId: form.orderId || null,
       });
 
       closeModal();
       await loadProductions();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao salvar produção.";
+      const message =
+        error instanceof Error ? error.message : "Falha ao salvar produção.";
       setFormError(`Erro ao salvar no banco: ${message}`);
     } finally {
       setIsSaving(false);
@@ -970,11 +1009,6 @@ const ProductionPage = () => {
 
   const confirmAdvanceStage = async () => {
     if (!canCompleteProduction || !selectedToAdvance) {
-      return;
-    }
-
-    if (!advanceTeamId) {
-      setAdvanceError("Selecione uma equipe responsavel para a etapa.");
       return;
     }
 
@@ -989,9 +1023,10 @@ const ProductionPage = () => {
     }
 
     const orderId = selectedToAdvance.id;
-    const payload: AdvanceProductionStatusInput = advanceMode === "existing"
-      ? { stageId: advanceStageId, teamId: advanceTeamId }
-      : { stageName: advanceStageName.trim(), teamId: advanceTeamId };
+    const payload: AdvanceProductionStatusInput =
+      advanceMode === "existing"
+        ? { stageId: advanceStageId }
+        : { stageName: advanceStageName.trim() };
 
     if (completionInFlightRef.current) {
       return;
@@ -1006,9 +1041,9 @@ const ProductionPage = () => {
     if (isMockMode) {
       const selectedStageName =
         advanceMode === "existing"
-          ? statusOptions.find((option) => option.id === advanceStageId)?.name || "Etapa"
+          ? statusOptions.find((option) => option.id === advanceStageId)
+              ?.name || "Etapa"
           : advanceStageName.trim();
-      const selectedTeamName = teams.find((team) => team.id === advanceTeamId)?.name || "Equipe";
 
       setData((current) =>
         current.map((order) =>
@@ -1020,10 +1055,11 @@ const ProductionPage = () => {
                   ...order.statuses,
                   {
                     id: `mock-status-${Date.now()}`,
-                    stageId: advanceMode === "existing" ? advanceStageId : undefined,
+                    stageId:
+                      advanceMode === "existing" ? advanceStageId : undefined,
                     stageName: selectedStageName,
-                    teamId: advanceTeamId,
-                    teamName: selectedTeamName,
+                    teamId: "",
+                    teamName: "",
                     createdAt: new Date().toISOString(),
                   },
                 ],
@@ -1046,9 +1082,7 @@ const ProductionPage = () => {
       const updated = await advanceProductionStatus(orderId, payload);
 
       setData((current) =>
-        current.map((order) =>
-          order.id === orderId ? updated : order,
-        ),
+        current.map((order) => (order.id === orderId ? updated : order)),
       );
 
       await loadProductions();
@@ -1058,19 +1092,25 @@ const ProductionPage = () => {
           productionId: orderId,
           source: "production-advance-status",
           status: "approved",
-          materials: updated.materials.length > 0 ? updated.materials : selectedToAdvance.materials,
+          materials:
+            updated.materials.length > 0
+              ? updated.materials
+              : selectedToAdvance.materials,
         });
       }
 
       closeAdvanceModal(true);
       toast({
         title: "Etapa avancada",
-        description: "A etapa foi adicionada na producao com equipe responsavel.",
+        description: "A etapa foi adicionada na producao.",
       });
     } catch (error) {
       if (error instanceof CompleteProductionError) {
         if (error.status === 401) {
-          if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+          if (
+            typeof window !== "undefined" &&
+            window.location.pathname !== "/login"
+          ) {
             window.location.assign("/login");
           }
 
@@ -1094,7 +1134,8 @@ const ProductionPage = () => {
         return;
       }
 
-      const message = error instanceof Error ? error.message : "Falha ao avancar etapa.";
+      const message =
+        error instanceof Error ? error.message : "Falha ao avancar etapa.";
       setAdvanceError(message);
       setCompletionError(message);
       setCompletionErrorStatus(0);
@@ -1122,27 +1163,26 @@ const ProductionPage = () => {
     const parsedRows: AdvanceProductionStatusInput[] = [];
 
     for (const row of statusEditorRows) {
-      if (!row.teamId) {
-        setStatusEditorError("Cada etapa precisa de equipe responsavel.");
-        return;
-      }
-
       if (row.mode === "existing") {
         if (!row.stageId) {
-          setStatusEditorError("Selecione uma etapa existente para todas as linhas em modo existente.");
+          setStatusEditorError(
+            "Selecione uma etapa existente para todas as linhas em modo existente.",
+          );
           return;
         }
 
-        parsedRows.push({ stageId: row.stageId, teamId: row.teamId });
+        parsedRows.push({ stageId: row.stageId });
       } else {
         const stageName = row.stageName.trim();
 
         if (!stageName) {
-          setStatusEditorError("Informe o nome da etapa para todas as linhas em modo nova etapa.");
+          setStatusEditorError(
+            "Informe o nome da etapa para todas as linhas em modo nova etapa.",
+          );
           return;
         }
 
-        parsedRows.push({ stageName, teamId: row.teamId });
+        parsedRows.push({ stageName });
       }
     }
 
@@ -1151,11 +1191,16 @@ const ProductionPage = () => {
     setRequestError("");
 
     try {
-      const updated = await replaceProductionStatuses(selectedToEditStatuses.id, {
-        statuses: parsedRows,
-      });
+      const updated = await replaceProductionStatuses(
+        selectedToEditStatuses.id,
+        {
+          statuses: parsedRows,
+        },
+      );
 
-      setData((current) => current.map((order) => (order.id === updated.id ? updated : order)));
+      setData((current) =>
+        current.map((order) => (order.id === updated.id ? updated : order)),
+      );
       await loadProductions();
       closeEditStatusesModal(true);
 
@@ -1166,7 +1211,10 @@ const ProductionPage = () => {
     } catch (error) {
       if (error instanceof CompleteProductionError) {
         if (error.status === 401) {
-          if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+          if (
+            typeof window !== "undefined" &&
+            window.location.pathname !== "/login"
+          ) {
             window.location.assign("/login");
           }
 
@@ -1176,7 +1224,9 @@ const ProductionPage = () => {
         setStatusEditorError(error.message);
       } else {
         setStatusEditorError(
-          error instanceof Error ? error.message : "Falha ao salvar etapas da producao.",
+          error instanceof Error
+            ? error.message
+            : "Falha ao salvar etapas da producao.",
         );
       }
     } finally {
@@ -1217,7 +1267,10 @@ const ProductionPage = () => {
       });
     } catch (error) {
       if (error instanceof ProductionShareError && error.status === 401) {
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/login"
+        ) {
           window.location.assign("/login");
         }
 
@@ -1234,8 +1287,12 @@ const ProductionPage = () => {
     }
   };
 
-  const isAdvancingSelected = Boolean(selectedToAdvance && updatingId === selectedToAdvance.id);
-  const isManagingSelectedImages = Boolean(selectedForImages && (isLoadingImages || isUploadingImages));
+  const isAdvancingSelected = Boolean(
+    selectedToAdvance && updatingId === selectedToAdvance.id,
+  );
+  const isManagingSelectedImages = Boolean(
+    selectedForImages && (isLoadingImages || isUploadingImages),
+  );
 
   const productionStatusSummary = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1279,7 +1336,9 @@ const ProductionPage = () => {
       header: "Materiais",
       render: (o: EmployeeProduction) => (
         <span className="text-xs text-foreground/80">
-          {o.materials.map((m) => `${m.productName} (${m.quantity} ${m.unit})`).join(", ")}
+          {o.materials
+            .map((m) => `${m.productName} (${m.quantity} ${m.unit})`)
+            .join(", ")}
         </span>
       ),
     },
@@ -1292,31 +1351,42 @@ const ProductionPage = () => {
     {
       key: "productionStatus",
       header: "Status",
-      render: (o: EmployeeProduction) => <StatusBadge status={String(o.productionStatus || "pending")} />,
+      render: (o: EmployeeProduction) => (
+        <StatusBadge status={String(o.productionStatus || "pending")} />
+      ),
     },
     {
       key: "statuses",
       header: "Etapas ativas",
       render: (o: EmployeeProduction) =>
         o.statuses.length === 0 ? (
-          <span className="text-xs text-muted-foreground">Sem etapas ativas.</span>
+          <span className="text-xs text-muted-foreground">
+            Sem etapas ativas.
+          </span>
         ) : (
           <div className="flex flex-wrap gap-1.5 max-w-[360px]">
             {o.statuses.map((status) => (
               <span
                 key={status.id}
                 className="inline-flex flex-col rounded border border-border bg-secondary/20 px-2 py-1"
-                title={status.createdAt ? new Date(status.createdAt).toLocaleString("pt-BR") : ""}
+                title={
+                  status.createdAt
+                    ? new Date(status.createdAt).toLocaleString("pt-BR")
+                    : ""
+                }
               >
-                <span className="text-[11px] font-bold text-foreground leading-tight">{formatStageLabel(status.stageName)}</span>
-                <span className="text-[10px] text-muted-foreground leading-tight">{status.teamName || "Equipe nao informada"}</span>
+                <span className="text-[11px] font-bold text-foreground leading-tight">
+                  {formatStageLabel(status.stageName)}
+                </span>
+                <span className="text-[10px] text-muted-foreground leading-tight">
+                  {status.teamName || "Equipe nao informada"}
+                </span>
               </span>
             ))}
           </div>
         ),
     },
     { key: "deliveryDate", header: "Entrega", mono: true },
-    { key: "installationTeam", header: "Equipe" },
     ...(canCompleteProduction
       ? [
           {
@@ -1326,12 +1396,18 @@ const ProductionPage = () => {
               const isSharingCurrent = sharingId === o.id;
               const isAdvancingCurrent = updatingId === o.id;
               const isManagingImagesCurrent =
-                selectedForImages?.id === o.id && (isLoadingImages || isUploadingImages);
+                selectedForImages?.id === o.id &&
+                (isLoadingImages || isUploadingImages);
 
               return (
                 <div className="flex flex-wrap items-center gap-2">
                   <button
-                    disabled={Boolean(sharingId) || Boolean(updatingId) || isLoadingImages || isUploadingImages}
+                    disabled={
+                      Boolean(sharingId) ||
+                      Boolean(updatingId) ||
+                      isLoadingImages ||
+                      isUploadingImages
+                    }
                     onClick={(e) => {
                       e.stopPropagation();
                       openImagesModal(o);
@@ -1351,7 +1427,9 @@ const ProductionPage = () => {
                     className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Share2 className="h-3 w-3" />
-                    {isSharingCurrent ? "GERANDO LINK..." : "COMPARTILHAR PRODUCAO"}
+                    {isSharingCurrent
+                      ? "GERANDO LINK..."
+                      : "COMPARTILHAR PRODUCAO"}
                   </button>
 
                   <button
@@ -1387,15 +1465,21 @@ const ProductionPage = () => {
   return (
     <DashboardLayout
       title="Produção"
-      subtitle={isEmployee ? "Minhas produções por funcionário" : "Acompanhamento de Pedidos"}
-      action={canCreateProduction ? (
-        <button
-          onClick={openCreateModal}
-          className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
-        >
-          <Plus className="h-3.5 w-3.5" /> NOVA PRODUÇÃO
-        </button>
-      ) : undefined}
+      subtitle={
+        isEmployee
+          ? "Minhas produções por funcionário"
+          : "Acompanhamento de Pedidos"
+      }
+      action={
+        canCreateProduction ? (
+          <button
+            onClick={openCreateModal}
+            className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" /> NOVA PRODUÇÃO
+          </button>
+        ) : undefined
+      }
     >
       <div className="animate-fade-in space-y-6">
         {modeNotice && (
@@ -1418,274 +1502,371 @@ const ProductionPage = () => {
 
         <div className="flex gap-3 flex-wrap">
           {productionStatusSummary.map(([status, count]) => (
-            <div key={status} className="flex items-center gap-2 px-3 py-1.5 border border-border rounded bg-card text-sm">
+            <div
+              key={status}
+              className="flex items-center gap-2 px-3 py-1.5 border border-border rounded bg-card text-sm"
+            >
               <StatusBadge status={status} />
-              <span className="font-mono text-xs text-muted-foreground">{count}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {count}
+              </span>
             </div>
           ))}
         </div>
         <DataTable
           columns={columns}
           data={data}
-          emptyMessage={isLoading ? "Carregando produções do banco..." : "Nenhuma produção cadastrada no banco."}
+          emptyMessage={
+            isLoading
+              ? "Carregando produções do banco..."
+              : "Nenhuma produção cadastrada no banco."
+          }
         />
       </div>
 
       {canCreateProduction && (
-        <Modal open={modal} onClose={closeModal} title="Nova Produção" width="max-w-5xl">
+        <Modal
+          open={modal}
+          onClose={closeModal}
+          title="Nova Produção"
+          width="max-w-5xl"
+        >
           <div className="flex max-h-[72dvh] flex-col">
             <div className="space-y-6 overflow-y-auto pr-1">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Orcamento aprovado (opcional)"
-                as="select"
-                value={form.budgetId}
-                onChange={(e) => applyApprovedBudgetToForm(e.target.value)}
-                options={approvedBudgetsCatalog.map((budget) => ({
-                  value: budget.id,
-                  label: `#${budget.id} - ${budget.clientName} - ${formatCurrency(Number(budget.totalPrice) || 0)}`,
-                }))}
-              />
-            </div>
-
-            {budgetsError && (
-              <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                <span>{budgetsError}</span>
-                <button
-                  onClick={() => void loadApprovedBudgetsForForm()}
-                  className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                >
-                  TENTAR NOVAMENTE
-                </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  label="Orcamento aprovado (opcional)"
+                  as="select"
+                  value={form.budgetId}
+                  onChange={(e) => applyApprovedBudgetToForm(e.target.value)}
+                  options={approvedBudgetsCatalog.map((budget) => ({
+                    value: budget.id,
+                    label: `#${budget.id} - ${budget.clientName} - ${formatCurrency(Number(budget.totalPrice) || 0)}`,
+                  }))}
+                />
               </div>
-            )}
 
-            {!isLoadingBudgets && approvedBudgetsCatalog.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Nenhum orcamento aprovado oficialmente encontrado para vinculacao automatica.
-              </p>
-            )}
+              {budgetsError && (
+                <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                  <span>{budgetsError}</span>
+                  <button
+                    onClick={() => void loadApprovedBudgetsForForm()}
+                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                  >
+                    TENTAR NOVAMENTE
+                  </button>
+                </div>
+              )}
 
-            {selectedApprovedBudget && (
-              <div className="border border-border rounded p-4 bg-secondary/20">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
-                  Resumo financeiro do orcamento selecionado
+              {!isLoadingBudgets && approvedBudgetsCatalog.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum orcamento aprovado oficialmente encontrado para
+                  vinculacao automatica.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Custo total</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(resolveBudgetTotalCost(selectedApprovedBudget))}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Custos aplicaveis</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(resolveBudgetApplicableCost(selectedApprovedBudget))}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Lucro</p>
-                    <p className="font-mono font-bold text-foreground">{formatCurrency(resolveBudgetProfit(selectedApprovedBudget))}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Preco final</p>
-                    <p className="font-mono font-bold text-primary">{formatCurrency(Number(selectedApprovedBudget.totalPrice) || 0)}</p>
+              )}
+
+              {selectedApprovedBudget && (
+                <div className="border border-border rounded p-4 bg-secondary/20">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                    Resumo financeiro do orcamento selecionado
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Custo total</p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(
+                          resolveBudgetTotalCost(selectedApprovedBudget),
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Custos aplicaveis</p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(
+                          resolveBudgetApplicableCost(selectedApprovedBudget),
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Lucro</p>
+                      <p className="font-mono font-bold text-foreground">
+                        {formatCurrency(
+                          resolveBudgetProfit(selectedApprovedBudget),
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Preco final</p>
+                      <p className="font-mono font-bold text-primary">
+                        {formatCurrency(
+                          Number(selectedApprovedBudget.totalPrice) || 0,
+                        )}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Cliente"
-                as="select"
-                value={form.clientId}
-                onChange={(e) => setForm((current) => ({ ...current, clientId: e.target.value }))}
-                options={clientsCatalog.map((client) => ({
-                  value: client.id,
-                  label: client.companyName ? `${client.name} • ${client.companyName}` : client.name,
-                }))}
-              />
-              <FormField
-                label="Prazo de Entrega"
-                type="date"
-                value={form.deliveryDate}
-                onChange={(e) => setForm((current) => ({ ...current, deliveryDate: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Descrição do Projeto"
-                as="textarea"
-                value={form.description}
-                onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
-                placeholder="Ex.: Armário planejado para cozinha"
-              />
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
-                  label="Equipe"
+                  label="Cliente"
                   as="select"
-                  value={form.installationTeamId}
-                  onChange={(e) => setForm((current) => ({ ...current, installationTeamId: e.target.value }))}
-                  options={teams.map((team) => ({ value: team.id, label: team.name }))}
+                  value={form.clientId}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      clientId: e.target.value,
+                    }))
+                  }
+                  options={clientsCatalog.map((client) => ({
+                    value: client.id,
+                    label: client.companyName
+                      ? `${client.name} • ${client.companyName}`
+                      : client.name,
+                  }))}
                 />
-                {!isLoadingTeams && teams.length === 0 && (
-                  <p className="text-xs text-destructive">Nenhuma equipe cadastrada. Cadastre uma equipe antes de criar a produção.</p>
-                )}
                 <FormField
-                  label="Custo Inicial (R$)"
+                  label="Prazo de Entrega"
+                  type="date"
+                  value={form.deliveryDate}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      deliveryDate: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  label="Descrição do Projeto"
+                  as="textarea"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      description: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex.: Armário planejado para cozinha"
+                />
+                <div className="space-y-4">
+                  <FormField
+                    label="Custo Inicial (R$)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.initialCost}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        initialCost: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* New paperboard production fields */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                    Tipo de Produção
+                  </label>
+                  <select
+                    value={form.productionType}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        productionType: e.target.value as
+                          | ""
+                          | "corte"
+                          | "vinco",
+                      }))
+                    }
+                    className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
+                  >
+                    <option value="">Não definido</option>
+                    <option value="corte">Corte</option>
+                    <option value="vinco">Vinco</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                    Local de Produção
+                  </label>
+                  <select
+                    value={form.productionLocation}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        productionLocation: e.target.value as
+                          | ""
+                          | "interno"
+                          | "terceirizado",
+                      }))
+                    }
+                    className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
+                  >
+                    <option value="">Não definido</option>
+                    <option value="interno">Interno</option>
+                    <option value="terceirizado">Terceirizado</option>
+                  </select>
+                </div>
+                <FormField
+                  label="% de Perda (0–100)"
                   type="number"
                   min={0}
-                  step="0.01"
-                  value={form.initialCost}
-                  onChange={(e) => setForm((current) => ({ ...current, initialCost: Number(e.target.value) }))}
+                  max={100}
+                  step="0.1"
+                  value={form.lossPercentage}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      lossPercentage: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex.: 5.5"
                 />
               </div>
-            </div>
 
-            {/* New paperboard production fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium mb-1 text-muted-foreground">Tipo de Produção</label>
-                <select
-                  value={form.productionType}
-                  onChange={(e) => setForm((current) => ({ ...current, productionType: e.target.value as "" | "corte" | "vinco" }))}
-                  className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-                >
-                  <option value="">Não definido</option>
-                  <option value="corte">Corte</option>
-                  <option value="vinco">Vinco</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-muted-foreground">Local de Produção</label>
-                <select
-                  value={form.productionLocation}
-                  onChange={(e) => setForm((current) => ({ ...current, productionLocation: e.target.value as "" | "interno" | "terceirizado" }))}
-                  className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-                >
-                  <option value="">Não definido</option>
-                  <option value="interno">Interno</option>
-                  <option value="terceirizado">Terceirizado</option>
-                </select>
-              </div>
-              <FormField
-                label="% de Perda (0–100)"
-                type="number"
-                min={0}
-                max={100}
-                step="0.1"
-                value={form.lossPercentage}
-                onChange={(e) => setForm((current) => ({ ...current, lossPercentage: e.target.value }))}
-                placeholder="Ex.: 5.5"
-              />
-            </div>
-
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
-                Materiais que serão usados
-              </p>
-
-              {clientsError && (
-                <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                  <span>{clientsError}</span>
-                  <button
-                    onClick={() => void loadClientsForForm()}
-                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                  >
-                    TENTAR NOVAMENTE
-                  </button>
-                </div>
-              )}
-
-              {!isLoadingClients && clientsCatalog.length === 0 && (
-                <p className="mb-3 text-xs text-destructive">
-                  Nenhum cliente cadastrado no banco. Cadastre um cliente antes de criar a producao.
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
+                  Materiais que serão usados
                 </p>
-              )}
 
-              {productsError && (
-                <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                  <span>{productsError}</span>
-                  <button
-                    onClick={() => void loadProductsForForm()}
-                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                  >
-                    TENTAR NOVAMENTE
-                  </button>
-                </div>
-              )}
+                {clientsError && (
+                  <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                    <span>{clientsError}</span>
+                    <button
+                      onClick={() => void loadClientsForForm()}
+                      className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                    >
+                      TENTAR NOVAMENTE
+                    </button>
+                  </div>
+                )}
 
-              {form.materials.length > 0 && (
-                <div className="border border-border rounded mb-3 divide-y divide-border/50">
-                  {form.materials.map((item, idx) => (
-                    <div key={`${item.productId}-${idx}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                      <span>
-                        {item.productName} x {item.quantity} {item.unit}
-                      </span>
-                      <button
-                        onClick={() => removeMaterial(idx)}
-                        className="text-muted-foreground hover:text-destructive"
+                {!isLoadingClients && clientsCatalog.length === 0 && (
+                  <p className="mb-3 text-xs text-destructive">
+                    Nenhum cliente cadastrado no banco. Cadastre um cliente
+                    antes de criar a producao.
+                  </p>
+                )}
+
+                {productsError && (
+                  <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                    <span>{productsError}</span>
+                    <button
+                      onClick={() => void loadProductsForForm()}
+                      className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                    >
+                      TENTAR NOVAMENTE
+                    </button>
+                  </div>
+                )}
+
+                {form.materials.length > 0 && (
+                  <div className="border border-border rounded mb-3 divide-y divide-border/50">
+                    {form.materials.map((item, idx) => (
+                      <div
+                        key={`${item.productId}-${idx}`}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <span>
+                          {item.productName} x {item.quantity} {item.unit}
+                        </span>
+                        <button
+                          onClick={() => removeMaterial(idx)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="flex-1">
+                    <FormField
+                      label="Produto"
+                      as="select"
+                      value={newMaterial.productId}
+                      onChange={(e) =>
+                        setNewMaterial((current) => ({
+                          ...current,
+                          productId: e.target.value,
+                        }))
+                      }
+                      options={productsCatalog.map((product) => ({
+                        value: product.id,
+                        label: `${product.name} (Saldo: ${product.stockQuantity})`,
+                      }))}
+                    />
+                  </div>
+                  <div className="w-full md:w-28">
+                    <FormField
+                      label="Quantidade"
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={newMaterial.quantity}
+                      onChange={(e) =>
+                        setNewMaterial((current) => ({
+                          ...current,
+                          quantity: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="w-full md:w-28">
+                    <FormField
+                      label="Unidade"
+                      value={newMaterial.unit}
+                      onChange={(e) =>
+                        setNewMaterial((current) => ({
+                          ...current,
+                          unit: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={addMaterial}
+                      disabled={
+                        isLoadingProducts || productsCatalog.length === 0
+                      }
+                      className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isLoadingProducts ? "CARREGANDO..." : "ADICIONAR"}
+                    </button>
+                  </div>
                 </div>
+              </div>
+
+              {formError && (
+                <p className="text-sm text-destructive">{formError}</p>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="flex-1">
-                  <FormField
-                    label="Produto"
-                    as="select"
-                    value={newMaterial.productId}
-                    onChange={(e) => setNewMaterial((current) => ({ ...current, productId: e.target.value }))}
-                    options={productsCatalog.map((product) => ({
-                      value: product.id,
-                      label: `${product.name} (Saldo: ${product.stockQuantity})`,
-                    }))}
-                  />
+              <div className="flex justify-between items-center border border-border rounded p-4 bg-secondary/20">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Status Inicial
+                  </p>
+                  <StatusBadge status="pending" />
                 </div>
-                <div className="w-full md:w-28">
-                  <FormField
-                    label="Quantidade"
-                    type="number"
-                    min={1}
-                    step="1"
-                    value={newMaterial.quantity}
-                    onChange={(e) => setNewMaterial((current) => ({ ...current, quantity: Number(e.target.value) }))}
-                  />
-                </div>
-                <div className="w-full md:w-28">
-                  <FormField
-                    label="Unidade"
-                    value={newMaterial.unit}
-                    onChange={(e) => setNewMaterial((current) => ({ ...current, unit: e.target.value }))}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    onClick={addMaterial}
-                    disabled={isLoadingProducts || productsCatalog.length === 0}
-                    className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isLoadingProducts ? "CARREGANDO..." : "ADICIONAR"}
-                  </button>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Custo Inicial Informado
+                  </p>
+                  <p className="font-mono font-bold text-primary text-lg">
+                    {formatCurrency(form.initialCost || 0)}
+                  </p>
                 </div>
               </div>
-            </div>
-
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-            <div className="flex justify-between items-center border border-border rounded p-4 bg-secondary/20">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Status Inicial</p>
-                <StatusBadge status="pending" />
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Custo Inicial Informado</p>
-                <p className="font-mono font-bold text-primary text-lg">{formatCurrency(form.initialCost || 0)}</p>
-              </div>
-            </div>
             </div>
 
             <div className="sticky bottom-0 z-10 mt-4 pt-3 border-t border-border bg-card/95 backdrop-blur flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
@@ -1699,11 +1880,9 @@ const ProductionPage = () => {
                 onClick={() => void saveProduction()}
                 disabled={
                   isSaving ||
-                  isLoadingTeams ||
                   isLoadingClients ||
                   isLoadingProducts ||
                   isLoadingBudgets ||
-                  teams.length === 0 ||
                   clientsCatalog.length === 0 ||
                   productsCatalog.length === 0
                 }
@@ -1726,21 +1905,27 @@ const ProductionPage = () => {
           <div className="space-y-4">
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Cliente:</span> {selectedForImages.clientName}
+                <span className="text-muted-foreground">Cliente:</span>{" "}
+                {selectedForImages.clientName}
               </p>
               <p>
-                <span className="text-muted-foreground">Projeto:</span> {selectedForImages.description}
+                <span className="text-muted-foreground">Projeto:</span>{" "}
+                {selectedForImages.description}
               </p>
               <p>
-                <span className="text-muted-foreground">Status:</span> {statusLabels[selectedForImages.productionStatus]}
+                <span className="text-muted-foreground">Status:</span>{" "}
+                {statusLabels[selectedForImages.productionStatus]}
               </p>
             </div>
 
             <div className="rounded border border-border p-4 space-y-3">
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Upload de imagens</p>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                  Upload de imagens
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Selecione ate {MAX_IMAGES_PER_REQUEST} arquivos por envio. Limite de {MAX_IMAGE_SIZE_MB}MB por imagem.
+                  Selecione ate {MAX_IMAGES_PER_REQUEST} arquivos por envio.
+                  Limite de {MAX_IMAGE_SIZE_MB}MB por imagem.
                 </p>
               </div>
 
@@ -1757,9 +1942,16 @@ const ProductionPage = () => {
               {selectedFiles.length > 0 && (
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {selectedFiles.map((file) => (
-                    <li key={`${file.name}-${file.size}-${file.lastModified}`} className="rounded border border-border bg-card px-3 py-2 text-xs">
-                      <p className="font-medium text-foreground truncate">{file.name}</p>
-                      <p className="text-muted-foreground mt-1">{formatImageSize(file.size)}</p>
+                    <li
+                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      className="rounded border border-border bg-card px-3 py-2 text-xs"
+                    >
+                      <p className="font-medium text-foreground truncate">
+                        {file.name}
+                      </p>
+                      <p className="text-muted-foreground mt-1">
+                        {formatImageSize(file.size)}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -1802,26 +1994,43 @@ const ProductionPage = () => {
 
             <div className="rounded border border-border p-4">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Galeria interna</p>
-                <span className="text-xs text-muted-foreground">{productionImages.length} arquivo(s)</span>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                  Galeria interna
+                </p>
+                <span className="text-xs text-muted-foreground">
+                  {productionImages.length} arquivo(s)
+                </span>
               </div>
 
               {isLoadingImages ? (
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                   {Array.from({ length: 4 }).map((_, index) => (
-                    <div key={index} className="h-16 rounded border border-border bg-secondary/40 animate-pulse" />
+                    <div
+                      key={index}
+                      className="h-16 rounded border border-border bg-secondary/40 animate-pulse"
+                    />
                   ))}
                 </div>
               ) : productionImages.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">Nenhuma imagem cadastrada para esta producao.</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Nenhuma imagem cadastrada para esta producao.
+                </p>
               ) : (
                 <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                   {productionImages.map((image) => (
-                    <li key={image.id} className="rounded border border-border bg-card px-3 py-2">
-                      <p className="text-sm font-medium text-foreground truncate">{image.fileName}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Enviado em {formatImageDateTime(image.createdAt)}</p>
+                    <li
+                      key={image.id}
+                      className="rounded border border-border bg-card px-3 py-2"
+                    >
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {image.fileName}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {image.mimeType || "image/*"} - {formatImageSize(image.fileSize)}
+                        Enviado em {formatImageDateTime(image.createdAt)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {image.mimeType || "image/*"} -{" "}
+                        {formatImageSize(image.fileSize)}
                       </p>
                     </li>
                   ))}
@@ -1851,18 +2060,22 @@ const ProductionPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Escolha uma etapa existente ou crie uma nova etapa e selecione a equipe responsavel.
+              Escolha uma etapa existente ou crie uma nova etapa e selecione a
+              equipe responsavel.
             </p>
 
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Cliente:</span> {selectedToAdvance.clientName}
+                <span className="text-muted-foreground">Cliente:</span>{" "}
+                {selectedToAdvance.clientName}
               </p>
               <p>
-                <span className="text-muted-foreground">Projeto:</span> {selectedToAdvance.description}
+                <span className="text-muted-foreground">Projeto:</span>{" "}
+                {selectedToAdvance.description}
               </p>
               <p>
-                <span className="text-muted-foreground">Status resumo:</span> {formatStageLabel(selectedToAdvance.productionStatus)}
+                <span className="text-muted-foreground">Status resumo:</span>{" "}
+                {formatStageLabel(selectedToAdvance.productionStatus)}
               </p>
             </div>
 
@@ -1931,21 +2144,6 @@ const ProductionPage = () => {
               />
             )}
 
-            <FormField
-              label="Equipe responsavel"
-              as="select"
-              value={advanceTeamId}
-              onChange={(e) => {
-                setAdvanceTeamId(e.target.value);
-                setAdvanceError("");
-              }}
-              options={teams.map((team) => ({ value: team.id, label: team.name }))}
-            />
-
-            {!isLoadingTeams && teams.length === 0 && (
-              <p className="text-xs text-destructive">Nenhuma equipe cadastrada. Cadastre uma equipe antes de avancar etapa.</p>
-            )}
-
             {(advanceError || completionError) && (
               <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive space-y-2">
                 <p>{advanceError || completionError}</p>
@@ -1953,12 +2151,15 @@ const ProductionPage = () => {
                 {completionDetails.length > 0 && (
                   <ul className="list-disc pl-4 space-y-1 text-xs">
                     {completionDetails.map((detail, index) => (
-                      <li key={`${detail.productId}-${index}`}>{formatStockDetailMessage(detail)}</li>
+                      <li key={`${detail.productId}-${index}`}>
+                        {formatStockDetailMessage(detail)}
+                      </li>
                     ))}
                   </ul>
                 )}
 
-                {(completionErrorStatus === 500 || completionErrorStatus === 0) && (
+                {(completionErrorStatus === 500 ||
+                  completionErrorStatus === 0) && (
                   <div className="pt-1">
                     <button
                       onClick={() => {
@@ -1986,12 +2187,10 @@ const ProductionPage = () => {
                 onClick={() => {
                   void confirmAdvanceStage();
                 }}
-                disabled={isAdvancingSelected || isLoadingTeams || teams.length === 0}
+                disabled={isAdvancingSelected}
                 className="px-4 py-2 text-sm rounded bg-success text-success-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isAdvancingSelected
-                  ? "Avancando..."
-                  : "Avancar etapa"}
+                {isAdvancingSelected ? "Avancando..." : "Avancar etapa"}
               </button>
             </div>
           </div>
@@ -2007,15 +2206,17 @@ const ProductionPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Defina todas as etapas ativas da producao. Cada linha exige etapa e equipe.
+              Defina todas as etapas ativas da producao.
             </p>
 
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Cliente:</span> {selectedToEditStatuses.clientName}
+                <span className="text-muted-foreground">Cliente:</span>{" "}
+                {selectedToEditStatuses.clientName}
               </p>
               <p>
-                <span className="text-muted-foreground">Projeto:</span> {selectedToEditStatuses.description}
+                <span className="text-muted-foreground">Projeto:</span>{" "}
+                {selectedToEditStatuses.description}
               </p>
             </div>
 
@@ -2031,11 +2232,16 @@ const ProductionPage = () => {
 
             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
               {statusEditorRows.map((row) => (
-                <div key={row.key} className="rounded border border-border p-3 space-y-3 bg-secondary/10">
+                <div
+                  key={row.key}
+                  className="rounded border border-border p-3 space-y-3 bg-secondary/10"
+                >
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => updateStatusEditorRow(row.key, { mode: "existing" })}
+                      onClick={() =>
+                        updateStatusEditorRow(row.key, { mode: "existing" })
+                      }
                       className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
                         row.mode === "existing"
                           ? "border-primary/40 bg-primary/10 text-primary"
@@ -2046,7 +2252,9 @@ const ProductionPage = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => updateStatusEditorRow(row.key, { mode: "new" })}
+                      onClick={() =>
+                        updateStatusEditorRow(row.key, { mode: "new" })
+                      }
                       className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
                         row.mode === "new"
                           ? "border-primary/40 bg-primary/10 text-primary"
@@ -2062,7 +2270,11 @@ const ProductionPage = () => {
                       label="Etapa"
                       as="select"
                       value={row.stageId}
-                      onChange={(e) => updateStatusEditorRow(row.key, { stageId: e.target.value })}
+                      onChange={(e) =>
+                        updateStatusEditorRow(row.key, {
+                          stageId: e.target.value,
+                        })
+                      }
                       options={statusOptions.map((option) => ({
                         value: option.id,
                         label: `${option.name} (${option.usageCount})`,
@@ -2072,18 +2284,14 @@ const ProductionPage = () => {
                     <FormField
                       label="Nova etapa"
                       value={row.stageName}
-                      onChange={(e) => updateStatusEditorRow(row.key, { stageName: e.target.value })}
+                      onChange={(e) =>
+                        updateStatusEditorRow(row.key, {
+                          stageName: e.target.value,
+                        })
+                      }
                       placeholder="Ex.: Eletrica"
                     />
                   )}
-
-                  <FormField
-                    label="Equipe"
-                    as="select"
-                    value={row.teamId}
-                    onChange={(e) => updateStatusEditorRow(row.key, { teamId: e.target.value })}
-                    options={teams.map((team) => ({ value: team.id, label: team.name }))}
-                  />
 
                   <div className="flex justify-end">
                     <button
@@ -2116,10 +2324,12 @@ const ProductionPage = () => {
                 onClick={() => {
                   void saveEditedStatuses();
                 }}
-                disabled={Boolean(updatingId) || isLoadingTeams || teams.length === 0}
+                disabled={Boolean(updatingId)}
                 className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {updatingId === selectedToEditStatuses.id ? "Salvando..." : "Salvar etapas"}
+                {updatingId === selectedToEditStatuses.id
+                  ? "Salvando..."
+                  : "Salvar etapas"}
               </button>
             </div>
           </div>

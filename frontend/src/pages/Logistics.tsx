@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { DataTable } from "@/components/DataTable";
 import { FormField } from "@/components/FormField";
@@ -14,7 +22,6 @@ import {
   upsertLogisticsMonthlyClosing,
 } from "@/services/logistics";
 import { listStockMovements } from "@/services/stock";
-import { listTeams } from "@/services/teams";
 import { listEmployees } from "@/services/employees";
 import { useRoleAccess } from "@/auth/AuthProvider";
 import {
@@ -25,8 +32,21 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, CheckCircle2, Clock3, DollarSign, Truck, UserCheck, Users } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  DollarSign,
+  Truck,
+  UserCheck,
+} from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 
 type DeliveryHealthStatus = "late" | "near_due" | "on_time";
@@ -91,8 +111,9 @@ const financialByMonthChartConfig = {
   },
 } satisfies ChartConfig;
 
-const isFinalizedProduction = (status: EmployeeProduction["productionStatus"]) =>
-  status === "approved" || status === "delivered";
+const isFinalizedProduction = (
+  status: EmployeeProduction["productionStatus"],
+) => status === "approved" || status === "delivered";
 
 const healthStatusStyles: Record<DeliveryHealthStatus, string> = {
   late: "bg-destructive/20 text-destructive",
@@ -159,7 +180,9 @@ const getDaysToDelivery = (deliveryDate: string) => {
   return Math.floor((targetDate.getTime() - today.getTime()) / DAY_IN_MS);
 };
 
-const getDeliveryHealthStatus = (daysToDelivery: number | null): DeliveryHealthStatus => {
+const getDeliveryHealthStatus = (
+  daysToDelivery: number | null,
+): DeliveryHealthStatus => {
   if (daysToDelivery === null) {
     return "on_time";
   }
@@ -195,7 +218,8 @@ const formatDaysToDelivery = (daysToDelivery: number | null) => {
   return `${daysToDelivery} dias`;
 };
 
-const formatDeliveryDate = (value: string) => normalizeDeliveryDate(value) || "-";
+const formatDeliveryDate = (value: string) =>
+  normalizeDeliveryDate(value) || "-";
 
 const buildClientChartLabel = (clientName: string) => {
   const normalized = clientName.trim();
@@ -212,7 +236,12 @@ const buildClientChartLabel = (clientName: string) => {
 };
 
 const getApprovedReferenceDate = (budget: Budget) =>
-  normalizeDeliveryDate(budget.approvedAt || budget.updatedAt || budget.createdAt || budget.deliveryDate);
+  normalizeDeliveryDate(
+    budget.approvedAt ||
+      budget.updatedAt ||
+      budget.createdAt ||
+      budget.deliveryDate,
+  );
 
 const getPreApprovedReferenceDate = (budget: Budget) =>
   normalizeDeliveryDate(
@@ -252,7 +281,10 @@ const getMonthReference = (deliveryDate: string) => {
 
   return {
     monthKey: `${parsed.getFullYear()}-${month}`,
-    month: parsed.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+    month: parsed.toLocaleDateString("pt-BR", {
+      month: "short",
+      year: "2-digit",
+    }),
   };
 };
 
@@ -291,17 +323,24 @@ const LogisticsPage = () => {
   const { canViewFinancials } = useRoleAccess();
   const [productions, setProductions] = useState<EmployeeProduction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [materialUsageRows, setMaterialUsageRows] = useState<MaterialUsageRow[]>([]);
+  const [materialUsageRows, setMaterialUsageRows] = useState<
+    MaterialUsageRow[]
+  >([]);
   const [filterDateStart, setFilterDateStart] = useState("");
   const [filterDateEnd, setFilterDateEnd] = useState("");
-  const [teamCount, setTeamCount] = useState(0);
-  const [activeEmployeesCount, setActiveEmployeesCount] = useState<number | null>(null);
+  const [activeEmployeesCount, setActiveEmployeesCount] = useState<
+    number | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState("");
   const [secondaryWarning, setSecondaryWarning] = useState("");
-  const [referenceMonth, setReferenceMonth] = useState(getCurrentReferenceMonth());
+  const [referenceMonth, setReferenceMonth] = useState(
+    getCurrentReferenceMonth(),
+  );
   const [closingFilterMonth, setClosingFilterMonth] = useState("");
-  const [monthlyClosings, setMonthlyClosings] = useState<LogisticsMonthlyClosing[]>([]);
+  const [monthlyClosings, setMonthlyClosings] = useState<
+    LogisticsMonthlyClosing[]
+  >([]);
   const [isSavingClosing, setIsSavingClosing] = useState(false);
   const [isLoadingClosings, setIsLoadingClosings] = useState(false);
 
@@ -313,14 +352,12 @@ const LogisticsPage = () => {
     try {
       const [
         productionsResult,
-        teamsResult,
         employeesResult,
         budgetsResult,
         materialConsumptionResult,
         stockMovementsFallbackResult,
       ] = await Promise.allSettled([
         listProductions({ active: true }),
-        listTeams(),
         listEmployees(),
         listBudgets(),
         listActiveProductionMaterialConsumption({
@@ -339,7 +376,12 @@ const LogisticsPage = () => {
       ]);
 
       if (productionsResult.status !== "fulfilled") {
-        throw new Error(getErrorMessage(productionsResult.reason, "Falha ao carregar produções."));
+        throw new Error(
+          getErrorMessage(
+            productionsResult.reason,
+            "Falha ao carregar produções.",
+          ),
+        );
       }
 
       const nextProductions = productionsResult.value;
@@ -352,10 +394,15 @@ const LogisticsPage = () => {
         setBudgets(budgetsResult.value);
       } else {
         setBudgets([]);
-        warnings.push("Não foi possível obter orçamentos do banco para calcular lucro e receita na logística.");
+        warnings.push(
+          "Não foi possível obter orçamentos do banco para calcular lucro e receita na logística.",
+        );
       }
 
-      if (materialConsumptionResult.status === "fulfilled" && materialConsumptionResult.value.data.length > 0) {
+      if (
+        materialConsumptionResult.status === "fulfilled" &&
+        materialConsumptionResult.value.data.length > 0
+      ) {
         setMaterialUsageRows(
           materialConsumptionResult.value.data.map((item) => ({
             id: item.productId,
@@ -393,7 +440,9 @@ const LogisticsPage = () => {
               material: movement.productName || "Produto",
               unit: movement.unit || "unidade",
               totalQuantity: Math.max(0, Number(movement.quantity) || 0),
-              productionIds: new Set(movement.referenceId ? [movement.referenceId] : []),
+              productionIds: new Set(
+                movement.referenceId ? [movement.referenceId] : [],
+              ),
             });
             return;
           }
@@ -416,21 +465,20 @@ const LogisticsPage = () => {
         );
       } else {
         setMaterialUsageRows([]);
-        warnings.push("Não foi possível obter materiais consumidos por produções ativas.");
-      }
-
-      if (teamsResult.status === "fulfilled") {
-        setTeamCount(teamsResult.value.length);
-      } else {
-        setTeamCount(new Set(nextProductions.map((item) => item.installationTeam).filter(Boolean)).size);
-        warnings.push("Não foi possível obter o total de equipes do banco.");
+        warnings.push(
+          "Não foi possível obter materiais consumidos por produções ativas.",
+        );
       }
 
       if (employeesResult.status === "fulfilled") {
-        setActiveEmployeesCount(employeesResult.value.filter((employee) => employee.isActive).length);
+        setActiveEmployeesCount(
+          employeesResult.value.filter((employee) => employee.isActive).length,
+        );
       } else {
         setActiveEmployeesCount(null);
-        warnings.push("Não foi possível obter o total de funcionários ativos do banco.");
+        warnings.push(
+          "Não foi possível obter o total de funcionários ativos do banco.",
+        );
       }
 
       setSecondaryWarning(warnings.join(" "));
@@ -438,9 +486,10 @@ const LogisticsPage = () => {
       setProductions([]);
       setBudgets([]);
       setMaterialUsageRows([]);
-      setTeamCount(0);
       setActiveEmployeesCount(null);
-      setRequestError(`Não foi possível carregar dados de logística: ${getErrorMessage(error, "Erro inesperado.")}`);
+      setRequestError(
+        `Não foi possível carregar dados de logística: ${getErrorMessage(error, "Erro inesperado.")}`,
+      );
     } finally {
       setIsLoading(false);
     }
@@ -460,9 +509,13 @@ const LogisticsPage = () => {
     setIsLoadingClosings(true);
 
     try {
-      const closings = await listLogisticsMonthlyClosings(monthFilter || undefined);
+      const closings = await listLogisticsMonthlyClosings(
+        monthFilter || undefined,
+      );
       setMonthlyClosings(
-        [...closings].sort((a, b) => b.referenceMonth.localeCompare(a.referenceMonth)),
+        [...closings].sort((a, b) =>
+          b.referenceMonth.localeCompare(a.referenceMonth),
+        ),
       );
     } catch (error) {
       toast({
@@ -480,11 +533,19 @@ const LogisticsPage = () => {
     void loadMonthlyClosings(closingFilterMonth);
   }, [closingFilterMonth, canViewFinancials]);
 
-  const parsedFilterStart = useMemo(() => parseDateAtMidnight(filterDateStart), [filterDateStart]);
-  const parsedFilterEnd = useMemo(() => parseDateAtMidnight(filterDateEnd), [filterDateEnd]);
+  const parsedFilterStart = useMemo(
+    () => parseDateAtMidnight(filterDateStart),
+    [filterDateStart],
+  );
+  const parsedFilterEnd = useMemo(
+    () => parseDateAtMidnight(filterDateEnd),
+    [filterDateEnd],
+  );
 
   const hasInvalidDateRange = Boolean(
-    parsedFilterStart && parsedFilterEnd && parsedFilterStart.getTime() > parsedFilterEnd.getTime(),
+    parsedFilterStart &&
+    parsedFilterEnd &&
+    parsedFilterStart.getTime() > parsedFilterEnd.getTime(),
   );
 
   const isFullMonthDateFilter = useMemo(() => {
@@ -522,7 +583,10 @@ const LogisticsPage = () => {
       return false;
     }
 
-    if (parsedFilterStart && parsedValue.getTime() < parsedFilterStart.getTime()) {
+    if (
+      parsedFilterStart &&
+      parsedValue.getTime() < parsedFilterStart.getTime()
+    ) {
       return false;
     }
 
@@ -546,7 +610,10 @@ const LogisticsPage = () => {
   );
 
   const activeProductions = useMemo(
-    () => filteredProductions.filter((item) => !isFinalizedProduction(item.productionStatus)),
+    () =>
+      filteredProductions.filter(
+        (item) => !isFinalizedProduction(item.productionStatus),
+      ),
     [filteredProductions],
   );
 
@@ -565,17 +632,26 @@ const LogisticsPage = () => {
   );
 
   const overdueProductions = useMemo(
-    () => activeProductionRows.filter((item) => item.deliveryHealthStatus === "late"),
+    () =>
+      activeProductionRows.filter(
+        (item) => item.deliveryHealthStatus === "late",
+      ),
     [activeProductionRows],
   );
 
   const nearDueProductions = useMemo(
-    () => activeProductionRows.filter((item) => item.deliveryHealthStatus === "near_due"),
+    () =>
+      activeProductionRows.filter(
+        (item) => item.deliveryHealthStatus === "near_due",
+      ),
     [activeProductionRows],
   );
 
   const onTimeProductions = useMemo(
-    () => activeProductionRows.filter((item) => item.deliveryHealthStatus === "on_time"),
+    () =>
+      activeProductionRows.filter(
+        (item) => item.deliveryHealthStatus === "on_time",
+      ),
     [activeProductionRows],
   );
 
@@ -584,22 +660,19 @@ const LogisticsPage = () => {
     [activeProductions],
   );
 
-  const approvedBudgets = useMemo(
-    () => {
-      if (hasInvalidDateRange) {
-        return [] as Budget[];
+  const approvedBudgets = useMemo(() => {
+    if (hasInvalidDateRange) {
+      return [] as Budget[];
+    }
+
+    return budgets.filter((budget) => {
+      if (budget.status !== "approved") {
+        return false;
       }
 
-      return budgets.filter((budget) => {
-        if (budget.status !== "approved") {
-          return false;
-        }
-
-        return isDateInSelectedRange(getApprovedReferenceDate(budget));
-      });
-    },
-    [budgets, hasInvalidDateRange, parsedFilterStart, parsedFilterEnd],
-  );
+      return isDateInSelectedRange(getApprovedReferenceDate(budget));
+    });
+  }, [budgets, hasInvalidDateRange, parsedFilterStart, parsedFilterEnd]);
 
   const preApprovedAppliedCostsTotal = useMemo(() => {
     if (hasInvalidDateRange) {
@@ -608,13 +681,17 @@ const LogisticsPage = () => {
 
     return budgets
       .filter((budget) => budget.status === "pre_approved")
-      .filter((budget) => isDateInSelectedRange(getPreApprovedReferenceDate(budget)))
+      .filter((budget) =>
+        isDateInSelectedRange(getPreApprovedReferenceDate(budget)),
+      )
       .reduce((sum, budget) => {
         const summaryApplied = Number(
-          budget.financialSummary?.costsAppliedValue ?? budget.costsAppliedValue,
+          budget.financialSummary?.costsAppliedValue ??
+            budget.costsAppliedValue,
         );
         const fallbackApplicable = Number(
-          budget.financialSummary?.costsApplicableValue ?? budget.costsApplicableValue,
+          budget.financialSummary?.costsApplicableValue ??
+            budget.costsApplicableValue,
         );
 
         const appliedValue =
@@ -633,28 +710,37 @@ const LogisticsPage = () => {
 
     approvedBudgets.forEach((budget) => {
       const margin =
-        typeof budget.profitMargin === "number" ? normalizeMarginValue(budget.profitMargin) : null;
+        typeof budget.profitMargin === "number"
+          ? normalizeMarginValue(budget.profitMargin)
+          : null;
 
       const totalPrice = Math.max(0, Number(budget.totalPrice) || 0);
       const totalCostFromApi =
-        typeof budget.totalCost === "number" && Number.isFinite(budget.totalCost)
+        typeof budget.totalCost === "number" &&
+        Number.isFinite(budget.totalCost)
           ? Math.max(0, Number(budget.totalCost))
           : null;
 
       const generalCost =
         totalCostFromApi ??
-        (margin !== null && margin > -1 ? Math.max(0, totalPrice / (1 + margin)) : totalPrice);
+        (margin !== null && margin > -1
+          ? Math.max(0, totalPrice / (1 + margin))
+          : totalPrice);
 
       const profitFromApi =
-        typeof budget.profitValue === "number" && Number.isFinite(budget.profitValue)
+        typeof budget.profitValue === "number" &&
+        Number.isFinite(budget.profitValue)
           ? Number(budget.profitValue)
           : null;
 
-      const grossProfit = profitFromApi ?? Math.max(0, totalPrice - generalCost);
+      const grossProfit =
+        profitFromApi ?? Math.max(0, totalPrice - generalCost);
       const linkedRevenue = generalCost + grossProfit;
 
       const applicableCostFromSummary = Number(
-        budget.financialSummary?.costsApplicableValue ?? budget.costsApplicableValue ?? 0,
+        budget.financialSummary?.costsApplicableValue ??
+          budget.costsApplicableValue ??
+          0,
       );
       const applicableCostFromList = (budget.applicableCosts || []).reduce(
         (sum, item) => sum + (Number(item.amount) || 0),
@@ -662,7 +748,8 @@ const LogisticsPage = () => {
       );
       const applicableCost = Math.max(
         0,
-        Number.isFinite(applicableCostFromSummary) && applicableCostFromSummary > 0
+        Number.isFinite(applicableCostFromSummary) &&
+          applicableCostFromSummary > 0
           ? applicableCostFromSummary
           : applicableCostFromList,
       );
@@ -756,7 +843,9 @@ const LogisticsPage = () => {
       current.netProfit += item.netProfit;
     });
 
-    return Array.from(map.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+    return Array.from(map.values()).sort((a, b) =>
+      a.monthKey.localeCompare(b.monthKey),
+    );
   }, [financialRows]);
 
   const sortedMaterialUsageRows = useMemo(
@@ -774,12 +863,19 @@ const LogisticsPage = () => {
   const productionColumns = [
     { key: "clientName", header: "Cliente" },
     { key: "description", header: "Descrição" },
-    { key: "deliveryDate", header: "Entrega", mono: true, render: (item: LogisticsProductionRow) => formatDeliveryDate(item.deliveryDate) },
+    {
+      key: "deliveryDate",
+      header: "Entrega",
+      mono: true,
+      render: (item: LogisticsProductionRow) =>
+        formatDeliveryDate(item.deliveryDate),
+    },
     {
       key: "daysToDelivery",
       header: "Prazo",
       mono: true,
-      render: (item: LogisticsProductionRow) => formatDaysToDelivery(item.daysToDelivery),
+      render: (item: LogisticsProductionRow) =>
+        formatDaysToDelivery(item.daysToDelivery),
     },
     {
       key: "deliveryHealthStatus",
@@ -797,7 +893,9 @@ const LogisticsPage = () => {
     {
       key: "productionStatus",
       header: "Etapa",
-      render: (item: LogisticsProductionRow) => <StatusBadge status={item.productionStatus} />,
+      render: (item: LogisticsProductionRow) => (
+        <StatusBadge status={item.productionStatus} />
+      ),
     },
     { key: "installationTeam", header: "Equipe" },
   ];
@@ -813,21 +911,57 @@ const LogisticsPage = () => {
     { key: "productionsCount", header: "Produções Ativas", mono: true },
   ];
 
-  const activeEmployeesLabel = activeEmployeesCount === null ? "N/D" : activeEmployeesCount;
+  const activeEmployeesLabel =
+    activeEmployeesCount === null ? "N/D" : activeEmployeesCount;
 
   const closingColumns = [
-    { key: "referenceMonth", header: "Mes", render: (item: LogisticsMonthlyClosing) => formatReferenceMonth(item.referenceMonth) },
-    { key: "custoGeralAtivo", header: "Custo Geral Ativo", mono: true, render: (item: LogisticsMonthlyClosing) => formatCurrency(item.custoGeralAtivo) },
-    { key: "receitaVinculada", header: "Receita Vinculada", mono: true, render: (item: LogisticsMonthlyClosing) => formatCurrency(item.receitaVinculada) },
-    { key: "lucroLiquido", header: "Lucro Liquido", mono: true, render: (item: LogisticsMonthlyClosing) => formatCurrency(item.lucroLiquido) },
-    { key: "lucroBruto", header: "Lucro Bruto", mono: true, render: (item: LogisticsMonthlyClosing) => formatCurrency(item.lucroBruto) },
+    {
+      key: "referenceMonth",
+      header: "Mes",
+      render: (item: LogisticsMonthlyClosing) =>
+        formatReferenceMonth(item.referenceMonth),
+    },
+    {
+      key: "custoGeralAtivo",
+      header: "Custo Geral Ativo",
+      mono: true,
+      render: (item: LogisticsMonthlyClosing) =>
+        formatCurrency(item.custoGeralAtivo),
+    },
+    {
+      key: "receitaVinculada",
+      header: "Receita Vinculada",
+      mono: true,
+      render: (item: LogisticsMonthlyClosing) =>
+        formatCurrency(item.receitaVinculada),
+    },
+    {
+      key: "lucroLiquido",
+      header: "Lucro Liquido",
+      mono: true,
+      render: (item: LogisticsMonthlyClosing) =>
+        formatCurrency(item.lucroLiquido),
+    },
+    {
+      key: "lucroBruto",
+      header: "Lucro Bruto",
+      mono: true,
+      render: (item: LogisticsMonthlyClosing) =>
+        formatCurrency(item.lucroBruto),
+    },
     {
       key: "custosAplicadosPreAprovados",
       header: "Custos Aplicados (Pre-aprovados)",
       mono: true,
-      render: (item: LogisticsMonthlyClosing) => formatCurrency(item.custosAplicadosPreAprovados),
+      render: (item: LogisticsMonthlyClosing) =>
+        formatCurrency(item.custosAplicadosPreAprovados),
     },
-    { key: "updatedAt", header: "Atualizado em", render: (item: LogisticsMonthlyClosing) => formatDateTime(item.updatedAt), mono: true },
+    {
+      key: "updatedAt",
+      header: "Atualizado em",
+      render: (item: LogisticsMonthlyClosing) => formatDateTime(item.updatedAt),
+      mono: true,
+    },
   ];
 
   const handleMonthlyClosing = async () => {
@@ -884,7 +1018,10 @@ const LogisticsPage = () => {
       toast({
         variant: "destructive",
         title: "Nao foi possivel salvar",
-        description: getErrorMessage(error, "Nao foi possivel salvar o fechamento mensal."),
+        description: getErrorMessage(
+          error,
+          "Nao foi possivel salvar o fechamento mensal.",
+        ),
       });
     } finally {
       setIsSavingClosing(false);
@@ -932,7 +1069,9 @@ const LogisticsPage = () => {
                   disabled={isSavingClosing || !isFullMonthDateFilter}
                   className="h-10 px-3 py-2 text-xs font-bold rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSavingClosing ? "Salvando fechamento..." : "Fechamento Mensal"}
+                  {isSavingClosing
+                    ? "Salvando fechamento..."
+                    : "Fechamento Mensal"}
                 </button>
               </>
             )}
@@ -940,15 +1079,20 @@ const LogisticsPage = () => {
 
           {hasInvalidDateRange ? (
             <p className="mt-2 text-xs text-destructive">
-              O período informado é inválido. A data inicial não pode ser maior que a data final.
+              O período informado é inválido. A data inicial não pode ser maior
+              que a data final.
             </p>
-          ) : canViewFinancials && (filterDateStart || filterDateEnd) && !isFullMonthDateFilter ? (
+          ) : canViewFinancials &&
+            (filterDateStart || filterDateEnd) &&
+            !isFullMonthDateFilter ? (
             <p className="mt-2 text-xs text-destructive">
-              Para liberar o fechamento mensal, use data inicial no primeiro dia e data final no último dia do mesmo mês.
+              Para liberar o fechamento mensal, use data inicial no primeiro dia
+              e data final no último dia do mesmo mês.
             </p>
-          ) : (filterDateStart || filterDateEnd) ? (
+          ) : filterDateStart || filterDateEnd ? (
             <p className="mt-2 text-xs text-muted-foreground">
-              Filtro ativo para entregas e orçamentos aprovados no período selecionado.
+              Filtro ativo para entregas e orçamentos aprovados no período
+              selecionado.
             </p>
           ) : null}
         </div>
@@ -977,13 +1121,16 @@ const LogisticsPage = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
-          <StatCard title="Equipes" value={teamCount} icon={<Users className="h-4 w-4" />} />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4 gap-4">
           <StatCard
             title="Funcionários Ativos"
             value={activeEmployeesLabel}
             icon={<UserCheck className="h-4 w-4" />}
-            subtitle={activeEmployeesCount === null ? "Sem acesso ao módulo de funcionários" : undefined}
+            subtitle={
+              activeEmployeesCount === null
+                ? "Sem acesso ao módulo de funcionários"
+                : undefined
+            }
           />
           <StatCard
             title="Produções Atrasadas"
@@ -997,7 +1144,11 @@ const LogisticsPage = () => {
             icon={<Clock3 className="h-4 w-4" />}
             highlight={nearDueProductions.length > 0}
           />
-          <StatCard title="Produções em Dia" value={onTimeProductions.length} icon={<CheckCircle2 className="h-4 w-4" />} />
+          <StatCard
+            title="Produções em Dia"
+            value={onTimeProductions.length}
+            icon={<CheckCircle2 className="h-4 w-4" />}
+          />
           <StatCard
             title="Custo Geral Ativo"
             value={formatCurrency(financialTotals.generalCost)}
@@ -1034,9 +1185,12 @@ const LogisticsPage = () => {
         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-0">
-              <CardTitle className="text-sm">Gastos x Lucro por Orçamento Aprovado</CardTitle>
+              <CardTitle className="text-sm">
+                Gastos x Lucro por Orçamento Aprovado
+              </CardTitle>
               <CardDescription>
-                Comparativo dos primeiros 8 orçamentos aprovados com margem de lucro retornada pelo banco.
+                Comparativo dos primeiros 8 orçamentos aprovados com margem de
+                lucro retornada pelo banco.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
@@ -1063,18 +1217,29 @@ const LogisticsPage = () => {
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
-                          formatter={(value) => formatCurrency(Number(value) || 0)}
+                          formatter={(value) =>
+                            formatCurrency(Number(value) || 0)
+                          }
                         />
                       }
                     />
                     <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="generalCost" fill="var(--color-generalCost)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="grossProfit" fill="var(--color-grossProfit)" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="generalCost"
+                      fill="var(--color-generalCost)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="grossProfit"
+                      fill="var(--color-grossProfit)"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ChartContainer>
               ) : (
                 <p className="text-sm text-muted-foreground py-6">
-                  Sem orçamentos aprovados com margem para montar o gráfico comparativo.
+                  Sem orçamentos aprovados com margem para montar o gráfico
+                  comparativo.
                 </p>
               )}
             </CardContent>
@@ -1082,9 +1247,12 @@ const LogisticsPage = () => {
 
           <Card>
             <CardHeader className="pb-0">
-              <CardTitle className="text-sm">Evolução de Gastos e Lucro (Aprovados)</CardTitle>
+              <CardTitle className="text-sm">
+                Evolução de Gastos e Lucro (Aprovados)
+              </CardTitle>
               <CardDescription>
-                Valores por mês de aprovação, considerando margem de lucro de cada orçamento.
+                Valores por mês de aprovação, considerando margem de lucro de
+                cada orçamento.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
@@ -1110,7 +1278,9 @@ const LogisticsPage = () => {
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
-                          formatter={(value) => formatCurrency(Number(value) || 0)}
+                          formatter={(value) =>
+                            formatCurrency(Number(value) || 0)
+                          }
                         />
                       }
                     />
@@ -1140,7 +1310,8 @@ const LogisticsPage = () => {
                 </ChartContainer>
               ) : (
                 <p className="text-sm text-muted-foreground py-6">
-                  Sem dados financeiros de orçamentos aprovados para montar a evolução mensal.
+                  Sem dados financeiros de orçamentos aprovados para montar a
+                  evolução mensal.
                 </p>
               )}
             </CardContent>
@@ -1148,7 +1319,9 @@ const LogisticsPage = () => {
         </div>
 
         <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Materiais Mais Usados (Produções Ativas)</h2>
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+            Materiais Mais Usados (Produções Ativas)
+          </h2>
           <DataTable
             columns={materialColumns}
             data={sortedMaterialUsageRows}
@@ -1161,7 +1334,9 @@ const LogisticsPage = () => {
         </div>
 
         <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Produções Atrasadas</h2>
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+            Produções Atrasadas
+          </h2>
           <DataTable
             columns={productionColumns}
             data={overdueProductions}
@@ -1174,7 +1349,9 @@ const LogisticsPage = () => {
         </div>
 
         <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Produções Quase no Prazo</h2>
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+            Produções Quase no Prazo
+          </h2>
           <DataTable
             columns={productionColumns}
             data={nearDueProductions}
@@ -1187,7 +1364,9 @@ const LogisticsPage = () => {
         </div>
 
         <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Produções em Dia</h2>
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+            Produções em Dia
+          </h2>
           <DataTable
             columns={productionColumns}
             data={onTimeProductions}
@@ -1200,11 +1379,15 @@ const LogisticsPage = () => {
         </div>
 
         <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Resumo de Produções Ativas</h2>
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+            Resumo de Produções Ativas
+          </h2>
           <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded bg-card text-sm w-fit">
             <Truck className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground">Total ativo</span>
-            <span className="font-mono text-xs text-foreground">{activeProductions.length}</span>
+            <span className="font-mono text-xs text-foreground">
+              {activeProductions.length}
+            </span>
           </div>
         </div>
 
@@ -1225,7 +1408,9 @@ const LogisticsPage = () => {
               </button>
             </div>
 
-            <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">Historico de Fechamentos Mensais</h2>
+            <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
+              Historico de Fechamentos Mensais
+            </h2>
             <DataTable
               columns={closingColumns}
               data={monthlyClosings}

@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   Users,
   User,
-  Briefcase,
   Box,
   Package,
   FileText,
@@ -56,12 +55,6 @@ const navItems = [
     title: "Funcionários",
     url: "/employees",
     icon: User,
-    allowedRoles: ["admin", "gerente"],
-  },
-  {
-    title: "Equipes",
-    url: "/teams",
-    icon: Briefcase,
     allowedRoles: ["admin", "gerente"],
   },
   {

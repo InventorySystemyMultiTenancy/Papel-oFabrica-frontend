@@ -12,7 +12,6 @@ import ForbiddenPage from "./pages/Forbidden.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ClientsPage from "./pages/Clients.tsx";
 import EmployeesPage from "./pages/Employees.tsx";
-import TeamsPage from "./pages/Teams.tsx";
 import ProductsPage from "./pages/Products.tsx";
 import StockPage from "./pages/Stock.tsx";
 import BudgetsPage from "./pages/Budgets.tsx";
@@ -58,7 +57,6 @@ const App = () => (
                 >
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/employees" element={<EmployeesPage />} />
-                  <Route path="/teams" element={<TeamsPage />} />
                   <Route path="/products" element={<ProductsPage />} />
                   <Route path="/stock" element={<StockPage />} />
                   <Route path="/budgets" element={<BudgetsPage />} />

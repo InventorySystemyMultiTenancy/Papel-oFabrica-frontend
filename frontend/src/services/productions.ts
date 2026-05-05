@@ -55,7 +55,10 @@ export interface ProductionImage {
   url?: string;
 }
 
-export interface SharedProductionImage extends Omit<ProductionImage, "productionId"> {
+export interface SharedProductionImage extends Omit<
+  ProductionImage,
+  "productionId"
+> {
   productionId?: string;
   url: string;
 }
@@ -83,12 +86,12 @@ export interface CreateProductionInput {
 export type AdvanceProductionStatusInput =
   | {
       stageId: string;
-      teamId: string;
+      teamId?: string;
       stageName?: never;
     }
   | {
       stageName: string;
-      teamId: string;
+      teamId?: string;
       stageId?: never;
     };
 
@@ -164,7 +167,12 @@ export class CompleteProductionError extends Error {
   code: CompleteProductionErrorCode;
   details: CompleteProductionStockDetail[];
 
-  constructor({ status, code, message, details = [] }: CompleteProductionErrorInput) {
+  constructor({
+    status,
+    code,
+    message,
+    details = [],
+  }: CompleteProductionErrorInput) {
     super(message);
     this.status = status;
     this.code = code;
@@ -264,7 +272,9 @@ const normalizeDeliveryDate = (value: unknown) => {
   return raw.includes("T") ? raw.split("T")[0] : raw;
 };
 
-const mapStockDetail = (value: unknown): CompleteProductionStockDetail | null => {
+const mapStockDetail = (
+  value: unknown,
+): CompleteProductionStockDetail | null => {
   const detail = toRecord(value);
 
   if (!detail) {
@@ -272,11 +282,23 @@ const mapStockDetail = (value: unknown): CompleteProductionStockDetail | null =>
   }
 
   const productId = toStringSafe(detail.productId ?? detail.product_id, "");
-  const productName = toStringSafe(detail.productName ?? detail.product_name, "");
-  const requestedQuantity = toNumber(detail.requestedQuantity ?? detail.requested_quantity);
-  const availableStock = toNumber(detail.availableStock ?? detail.available_stock);
+  const productName = toStringSafe(
+    detail.productName ?? detail.product_name,
+    "",
+  );
+  const requestedQuantity = toNumber(
+    detail.requestedQuantity ?? detail.requested_quantity,
+  );
+  const availableStock = toNumber(
+    detail.availableStock ?? detail.available_stock,
+  );
 
-  if (!productId && !productName && requestedQuantity === 0 && availableStock === 0) {
+  if (
+    !productId &&
+    !productName &&
+    requestedQuantity === 0 &&
+    availableStock === 0
+  ) {
     return null;
   }
 
@@ -288,7 +310,9 @@ const mapStockDetail = (value: unknown): CompleteProductionStockDetail | null =>
   };
 };
 
-const extractStockDetails = (payload: unknown): CompleteProductionStockDetail[] => {
+const extractStockDetails = (
+  payload: unknown,
+): CompleteProductionStockDetail[] => {
   const data = toRecord(payload);
 
   if (!data) {
@@ -300,7 +324,9 @@ const extractStockDetails = (payload: unknown): CompleteProductionStockDetail[] 
   if (Array.isArray(rawDetails)) {
     return rawDetails
       .map(mapStockDetail)
-      .filter((detail): detail is CompleteProductionStockDetail => Boolean(detail));
+      .filter((detail): detail is CompleteProductionStockDetail =>
+        Boolean(detail),
+      );
   }
 
   const fromDetails = mapStockDetail(rawDetails);
@@ -326,7 +352,9 @@ const formatQuantity = (value: number) =>
         maximumFractionDigits: 3,
       });
 
-export const formatStockDetailMessage = (detail: CompleteProductionStockDetail) => {
+export const formatStockDetailMessage = (
+  detail: CompleteProductionStockDetail,
+) => {
   const productName = detail.productName || "Produto sem nome";
   const productId = detail.productId || "sem-id";
 
@@ -348,14 +376,16 @@ const mapCompleteProductionError = (error: ApiError) => {
       return new CompleteProductionError({
         status: 400,
         code: "invalid_material_data",
-        message: "Dados inconsistentes na producao/orcamento. Revise os materiais vinculados ao produto.",
+        message:
+          "Dados inconsistentes na producao/orcamento. Revise os materiais vinculados ao produto.",
         details,
       });
     case 500:
       return new CompleteProductionError({
         status: 500,
         code: "stock_configuration_missing",
-        message: "Configuracao de estoque do servidor nao aplicada. Contate o suporte.",
+        message:
+          "Configuracao de estoque do servidor nao aplicada. Contate o suporte.",
       });
     default:
       return new CompleteProductionError({
@@ -414,7 +444,10 @@ const sendCreateShareLinkRequest = async (productionId: string) => {
       method: "POST",
     });
   } catch (error) {
-    if (!(error instanceof ApiError) || (error.status !== 404 && error.status !== 405)) {
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 404 && error.status !== 405)
+    ) {
       throw error;
     }
 
@@ -436,28 +469,46 @@ const fetchPublicProductionByToken = async (token: string) => {
   }
 
   try {
-    return await request<unknown>(`/public/productions/${encodeURIComponent(normalizedToken)}`, undefined, {
-      skipAuth: true,
-    });
+    return await request<unknown>(
+      `/public/productions/${encodeURIComponent(normalizedToken)}`,
+      undefined,
+      {
+        skipAuth: true,
+      },
+    );
   } catch (error) {
-    if (!(error instanceof ApiError) || (error.status !== 404 && error.status !== 405)) {
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 404 && error.status !== 405)
+    ) {
       throw error;
     }
   }
 
   try {
-    return await request<unknown>(`/productions/public/${encodeURIComponent(normalizedToken)}`, undefined, {
-      skipAuth: true,
-    });
+    return await request<unknown>(
+      `/productions/public/${encodeURIComponent(normalizedToken)}`,
+      undefined,
+      {
+        skipAuth: true,
+      },
+    );
   } catch (error) {
-    if (!(error instanceof ApiError) || (error.status !== 404 && error.status !== 405)) {
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 404 && error.status !== 405)
+    ) {
       throw error;
     }
   }
 
-  return request<unknown>(`/productions/shared/${encodeURIComponent(normalizedToken)}`, undefined, {
-    skipAuth: true,
-  });
+  return request<unknown>(
+    `/productions/shared/${encodeURIComponent(normalizedToken)}`,
+    undefined,
+    {
+      skipAuth: true,
+    },
+  );
 };
 
 const mapAdvanceProductionError = (error: ApiError) => {
@@ -480,7 +531,8 @@ const mapAdvanceProductionError = (error: ApiError) => {
       return new CompleteProductionError({
         status: 403,
         code: "forbidden",
-        message: "Acesso negado. Apenas admin e gerente podem alterar o status da producao.",
+        message:
+          "Acesso negado. Apenas admin e gerente podem alterar o status da producao.",
       });
     case 404:
       return new CompleteProductionError({
@@ -523,7 +575,8 @@ const mapShareProductionError = (error: ApiError) => {
       return new ProductionShareError({
         status: 403,
         code: "forbidden",
-        message: "Acesso negado. Apenas admin e gerente podem compartilhar producao.",
+        message:
+          "Acesso negado. Apenas admin e gerente podem compartilhar producao.",
       });
     case 404:
       return new ProductionShareError({
@@ -564,7 +617,9 @@ const mapPublicProductionError = (error: ApiError) => {
       return new ProductionShareError({
         status: error.status,
         code: "unknown",
-        message: error.message || "Nao foi possivel carregar o acompanhamento da producao.",
+        message:
+          error.message ||
+          "Nao foi possivel carregar o acompanhamento da producao.",
       });
   }
 };
@@ -575,7 +630,8 @@ const mapProductionImageError = (error: ApiError) => {
       return new ProductionImageError({
         status: 400,
         code: "bad_request",
-        message: "Falha ao enviar imagens. Verifique tipo, tamanho e quantidade dos arquivos.",
+        message:
+          "Falha ao enviar imagens. Verifique tipo, tamanho e quantidade dos arquivos.",
       });
     case 401:
       return new ProductionImageError({
@@ -587,7 +643,8 @@ const mapProductionImageError = (error: ApiError) => {
       return new ProductionImageError({
         status: 403,
         code: "forbidden",
-        message: "Acesso negado. Apenas admin e gerente podem gerenciar imagens da producao.",
+        message:
+          "Acesso negado. Apenas admin e gerente podem gerenciar imagens da producao.",
       });
     case 404:
       return new ProductionImageError({
@@ -605,7 +662,8 @@ const mapProductionImageError = (error: ApiError) => {
       return new ProductionImageError({
         status: 415,
         code: "unsupported_media_type",
-        message: "Formato de arquivo invalido. Envie apenas arquivos de imagem.",
+        message:
+          "Formato de arquivo invalido. Envie apenas arquivos de imagem.",
       });
     case 500:
       return new ProductionImageError({
@@ -617,7 +675,8 @@ const mapProductionImageError = (error: ApiError) => {
       return new ProductionImageError({
         status: error.status,
         code: "unknown",
-        message: error.message || "Nao foi possivel processar imagens da producao.",
+        message:
+          error.message || "Nao foi possivel processar imagens da producao.",
       });
   }
 };
@@ -629,7 +688,10 @@ const mapProductionImage = (value: unknown): ProductionImage | null => {
     return null;
   }
 
-  const id = toStringSafe(image.id ?? image.imageId ?? image.image_id, "").trim();
+  const id = toStringSafe(
+    image.id ?? image.imageId ?? image.image_id,
+    "",
+  ).trim();
 
   if (!id) {
     return null;
@@ -637,9 +699,18 @@ const mapProductionImage = (value: unknown): ProductionImage | null => {
 
   const fileName = toStringSafe(image.fileName ?? image.file_name, "").trim();
   const mimeType = toStringSafe(image.mimeType ?? image.mime_type, "").trim();
-  const createdAt = toStringSafe(image.createdAt ?? image.created_at, "").trim();
-  const productionId = toStringSafe(image.productionId ?? image.production_id, "").trim();
-  const url = toStringSafe(image.url ?? image.fileUrl ?? image.file_url, "").trim();
+  const createdAt = toStringSafe(
+    image.createdAt ?? image.created_at,
+    "",
+  ).trim();
+  const productionId = toStringSafe(
+    image.productionId ?? image.production_id,
+    "",
+  ).trim();
+  const url = toStringSafe(
+    image.url ?? image.fileUrl ?? image.file_url,
+    "",
+  ).trim();
 
   return {
     id,
@@ -652,7 +723,9 @@ const mapProductionImage = (value: unknown): ProductionImage | null => {
   };
 };
 
-const mapSharedProductionImage = (value: unknown): SharedProductionImage | null => {
+const mapSharedProductionImage = (
+  value: unknown,
+): SharedProductionImage | null => {
   const parsed = mapProductionImage(value);
 
   if (!parsed) {
@@ -689,7 +762,9 @@ const validateUploadImages = (files: File[]) => {
     });
   }
 
-  const invalidTypeFile = files.find((file) => !file.type || !file.type.startsWith("image/"));
+  const invalidTypeFile = files.find(
+    (file) => !file.type || !file.type.startsWith("image/"),
+  );
 
   if (invalidTypeFile) {
     throw new ProductionImageError({
@@ -719,13 +794,18 @@ const mapMaterial = (value: unknown): ProductionMaterial | null => {
 
   return {
     productId: toStringSafe(material.productId ?? material.product_id, ""),
-    productName: toStringSafe(material.productName ?? material.product_name, "Material"),
+    productName: toStringSafe(
+      material.productName ?? material.product_name,
+      "Material",
+    ),
     quantity: toNumber(material.quantity),
     unit: toStringSafe(material.unit, "unidade"),
   };
 };
 
-const mapProductionStageStatus = (value: unknown): ProductionStageStatus | null => {
+const mapProductionStageStatus = (
+  value: unknown,
+): ProductionStageStatus | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -733,11 +813,14 @@ const mapProductionStageStatus = (value: unknown): ProductionStageStatus | null 
   }
 
   const id = toStringSafe(item.id, "").trim();
-  const stageName = toStringSafe(item.stageName ?? item.stage_name ?? item.name, "").trim();
+  const stageName = toStringSafe(
+    item.stageName ?? item.stage_name ?? item.name,
+    "",
+  ).trim();
   const teamId = toStringSafe(item.teamId ?? item.team_id, "").trim();
   const teamName = toStringSafe(item.teamName ?? item.team_name, "").trim();
 
-  if (!id || !stageName || !teamId) {
+  if (!id || !stageName) {
     return null;
   }
 
@@ -753,7 +836,9 @@ const mapProductionStageStatus = (value: unknown): ProductionStageStatus | null 
   };
 };
 
-const mapProductionStatusOption = (value: unknown): ProductionStatusOption | null => {
+const mapProductionStatusOption = (
+  value: unknown,
+): ProductionStatusOption | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -767,7 +852,10 @@ const mapProductionStatusOption = (value: unknown): ProductionStatusOption | nul
     return null;
   }
 
-  const normalizedName = toStringSafe(item.normalizedName ?? item.normalized_name, "").trim();
+  const normalizedName = toStringSafe(
+    item.normalizedName ?? item.normalized_name,
+    "",
+  ).trim();
 
   return {
     id,
@@ -802,7 +890,10 @@ const mapProduction = (value: unknown): EmployeeProduction | null => {
     typeof rawInstallationTeam === "string"
       ? rawInstallationTeam
       : rawInstallationTeam && typeof rawInstallationTeam === "object"
-        ? toStringSafe((rawInstallationTeam as Record<string, unknown>).name, "A definir")
+        ? toStringSafe(
+            (rawInstallationTeam as Record<string, unknown>).name,
+            "A definir",
+          )
         : "A definir";
 
   const installationTeamId = toStringSafe(
@@ -814,11 +905,11 @@ const mapProduction = (value: unknown): EmployeeProduction | null => {
     "",
   );
 
-  const rawBudget = toRecord(item.budget ?? item.budgetData ?? item.budget_data);
+  const rawBudget = toRecord(
+    item.budget ?? item.budgetData ?? item.budget_data,
+  );
   const budgetId = toStringSafe(
-    item.budgetId ??
-      item.budget_id ??
-      (rawBudget ? rawBudget.id : ""),
+    item.budgetId ?? item.budget_id ?? (rawBudget ? rawBudget.id : ""),
     "",
   );
 
@@ -828,31 +919,54 @@ const mapProduction = (value: unknown): EmployeeProduction | null => {
         item.budget_total_price ??
         item.totalPrice ??
         item.total_price,
-    ) ?? (rawBudget ? toOptionalNumber(rawBudget.totalPrice ?? rawBudget.total_price) : null);
+    ) ??
+    (rawBudget
+      ? toOptionalNumber(rawBudget.totalPrice ?? rawBudget.total_price)
+      : null);
 
   const rawProductionType = item.productionType ?? item.production_type;
   const productionType: EmployeeProduction["productionType"] =
-    rawProductionType === "corte" || rawProductionType === "vinco" ? rawProductionType : null;
+    rawProductionType === "corte" || rawProductionType === "vinco"
+      ? rawProductionType
+      : null;
 
-  const rawProductionLocation = item.productionLocation ?? item.production_location;
+  const rawProductionLocation =
+    item.productionLocation ?? item.production_location;
   const productionLocation: EmployeeProduction["productionLocation"] =
-    rawProductionLocation === "interno" || rawProductionLocation === "terceirizado" ? rawProductionLocation : null;
+    rawProductionLocation === "interno" ||
+    rawProductionLocation === "terceirizado"
+      ? rawProductionLocation
+      : null;
 
-  const lossPercentage = toNumber(item.lossPercentage ?? item.loss_percentage ?? 0);
-  const orderId = typeof item.orderId === "string" && item.orderId ? item.orderId : null;
+  const lossPercentage = toNumber(
+    item.lossPercentage ?? item.loss_percentage ?? 0,
+  );
+  const orderId =
+    typeof item.orderId === "string" && item.orderId ? item.orderId : null;
 
   return {
     id,
-    clientName: toStringSafe(item.clientName ?? item.client_name, "Cliente não informado"),
+    clientName: toStringSafe(
+      item.clientName ?? item.client_name,
+      "Cliente não informado",
+    ),
     description: toStringSafe(item.description, ""),
-    productionStatus: toStringSafe(item.productionStatus ?? item.production_status, "pending").trim() || "pending",
-    deliveryDate: normalizeDeliveryDate(item.deliveryDate ?? item.delivery_date),
+    productionStatus:
+      toStringSafe(
+        item.productionStatus ?? item.production_status,
+        "pending",
+      ).trim() || "pending",
+    deliveryDate: normalizeDeliveryDate(
+      item.deliveryDate ?? item.delivery_date,
+    ),
     installationTeam,
     installationTeamId: installationTeamId || undefined,
     budgetId: budgetId || undefined,
     budgetTotalPrice: budgetTotalPrice === null ? undefined : budgetTotalPrice,
     initialCost: toNumber(item.initialCost ?? item.initial_cost),
-    materials: sourceMaterials.map(mapMaterial).filter((material): material is ProductionMaterial => Boolean(material)),
+    materials: sourceMaterials
+      .map(mapMaterial)
+      .filter((material): material is ProductionMaterial => Boolean(material)),
     statuses: sourceStatuses
       .map(mapProductionStageStatus)
       .filter((status): status is ProductionStageStatus => Boolean(status)),
@@ -863,7 +977,10 @@ const mapProduction = (value: unknown): EmployeeProduction | null => {
   };
 };
 
-const mapSharedProduction = (value: unknown, token: string): SharedProductionSnapshot | null => {
+const mapSharedProduction = (
+  value: unknown,
+  token: string,
+): SharedProductionSnapshot | null => {
   const production = mapProduction(value);
 
   if (!production || !value || typeof value !== "object") {
@@ -882,13 +999,20 @@ const mapSharedProduction = (value: unknown, token: string): SharedProductionSna
     .filter((image): image is SharedProductionImage => Boolean(image))
     .map((image) => ({
       ...image,
-      url: image.url || (fallbackBasePath ? `${fallbackBasePath}/${encodeURIComponent(image.id)}` : ""),
+      url:
+        image.url ||
+        (fallbackBasePath
+          ? `${fallbackBasePath}/${encodeURIComponent(image.id)}`
+          : ""),
     }))
     .filter((image) => Boolean(image.url));
 
   return {
     ...production,
-    observations: toStringSafe(item.observations ?? item.notes ?? item.note ?? item.description, "").trim(),
+    observations: toStringSafe(
+      item.observations ?? item.notes ?? item.note ?? item.description,
+      "",
+    ).trim(),
     updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
     images,
   };
@@ -955,7 +1079,9 @@ export const createProduction = async (input: CreateProductionInput) => {
   return ensureProduction(payload, "Nao foi possivel criar a producao.");
 };
 
-export const listProductionImages = async (productionId: string): Promise<ProductionImage[]> => {
+export const listProductionImages = async (
+  productionId: string,
+): Promise<ProductionImage[]> => {
   const normalizedId = productionId.trim();
 
   if (!normalizedId) {
@@ -967,7 +1093,9 @@ export const listProductionImages = async (productionId: string): Promise<Produc
   }
 
   try {
-    const payload = await request<unknown>(`/productions/${normalizedId}/images`);
+    const payload = await request<unknown>(
+      `/productions/${normalizedId}/images`,
+    );
     return mapProductionImageCollection(payload);
   } catch (error) {
     if (error instanceof ProductionImageError) {
@@ -994,7 +1122,10 @@ export const listProductionImages = async (productionId: string): Promise<Produc
   }
 };
 
-export const uploadProductionImages = async (productionId: string, files: File[]): Promise<ProductionImage[]> => {
+export const uploadProductionImages = async (
+  productionId: string,
+  files: File[],
+): Promise<ProductionImage[]> => {
   const normalizedId = productionId.trim();
 
   if (!normalizedId) {
@@ -1014,10 +1145,13 @@ export const uploadProductionImages = async (productionId: string, files: File[]
   });
 
   try {
-    const payload = await request<unknown>(`/productions/${normalizedId}/images`, {
-      method: "POST",
-      body: formData,
-    });
+    const payload = await request<unknown>(
+      `/productions/${normalizedId}/images`,
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
 
     return mapProductionImageCollection(payload);
   } catch (error) {
@@ -1045,7 +1179,9 @@ export const uploadProductionImages = async (productionId: string, files: File[]
   }
 };
 
-export const createProductionShareLink = async (productionId: string): Promise<ProductionShareLink> => {
+export const createProductionShareLink = async (
+  productionId: string,
+): Promise<ProductionShareLink> => {
   const normalizedId = productionId.trim();
 
   if (!normalizedId) {
@@ -1069,9 +1205,18 @@ export const createProductionShareLink = async (productionId: string): Promise<P
       });
     }
 
-    const token = toStringSafe(record.token ?? record.shareToken ?? record.share_token, "").trim();
-    const receivedUrl = toStringSafe(record.url ?? record.shareUrl ?? record.share_url ?? record.link, "").trim();
-    const expiresAt = toStringSafe(record.expiresAt ?? record.expires_at, "").trim();
+    const token = toStringSafe(
+      record.token ?? record.shareToken ?? record.share_token,
+      "",
+    ).trim();
+    const receivedUrl = toStringSafe(
+      record.url ?? record.shareUrl ?? record.share_url ?? record.link,
+      "",
+    ).trim();
+    const expiresAt = toStringSafe(
+      record.expiresAt ?? record.expires_at,
+      "",
+    ).trim();
 
     const fallbackUrl = token
       ? `${getWindowOrigin()}/acompanhar-producao/${encodeURIComponent(token)}`
@@ -1098,19 +1243,22 @@ export const createProductionShareLink = async (productionId: string): Promise<P
       throw new ProductionShareError({
         status: 500,
         code: "server_error",
-        message: "Nao foi possivel montar o link de compartilhamento da producao.",
+        message:
+          "Nao foi possivel montar o link de compartilhamento da producao.",
       });
     }
 
-    const safeToken = token || (() => {
-      try {
-        const parsed = new URL(url);
-        const fromPath = parsed.pathname.split("/").filter(Boolean).pop();
-        return fromPath ? decodeURIComponent(fromPath) : "";
-      } catch {
-        return "";
-      }
-    })();
+    const safeToken =
+      token ||
+      (() => {
+        try {
+          const parsed = new URL(url);
+          const fromPath = parsed.pathname.split("/").filter(Boolean).pop();
+          return fromPath ? decodeURIComponent(fromPath) : "";
+        } catch {
+          return "";
+        }
+      })();
 
     return {
       token: safeToken,
@@ -1147,13 +1295,17 @@ export const getPublicProductionByToken = async (token: string) => {
 
   try {
     const payload = await fetchPublicProductionByToken(normalizedToken);
-    const normalized = mapSharedProduction(unwrapDataEnvelope(payload), normalizedToken);
+    const normalized = mapSharedProduction(
+      unwrapDataEnvelope(payload),
+      normalizedToken,
+    );
 
     if (!normalized) {
       throw new ProductionShareError({
         status: 500,
         code: "server_error",
-        message: "Nao foi possivel interpretar os dados da producao compartilhada.",
+        message:
+          "Nao foi possivel interpretar os dados da producao compartilhada.",
       });
     }
 
@@ -1178,7 +1330,8 @@ export const getPublicProductionByToken = async (token: string) => {
     throw new ProductionShareError({
       status: 0,
       code: "unknown",
-      message: "Falha inesperada ao consultar acompanhamento publico da producao.",
+      message:
+        "Falha inesperada ao consultar acompanhamento publico da producao.",
     });
   }
 };
@@ -1193,7 +1346,10 @@ export const advanceProductionStatus = async (
     const payload = input
       ? await sendAdvanceStatusWithPayloadRequest(productionId, input)
       : await sendAdvanceStatusRequest(productionId);
-    return ensureProduction(payload, "Nao foi possivel avancar etapa da producao.");
+    return ensureProduction(
+      payload,
+      "Nao foi possivel avancar etapa da producao.",
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       throw mapAdvanceProductionError(error);
@@ -1221,7 +1377,10 @@ export const replaceProductionStatuses = async (
 ) => {
   try {
     const payload = await sendReplaceStatusesRequest(productionId, input);
-    return ensureProduction(payload, "Nao foi possivel atualizar as etapas da producao.");
+    return ensureProduction(
+      payload,
+      "Nao foi possivel atualizar as etapas da producao.",
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       throw mapAdvanceProductionError(error);
