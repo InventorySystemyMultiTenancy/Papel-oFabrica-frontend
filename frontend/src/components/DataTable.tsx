@@ -1,0 +1,79 @@
+import { ReactNode } from "react";
+import { useLanguage } from "@/i18n/LanguageProvider";
+
+interface Column<T> {
+  key: string;
+  header: string;
+  render?: (item: T) => ReactNode;
+  mono?: boolean;
+  className?: string;
+}
+
+interface DataTableProps<T> {
+  columns: Column<T>[];
+  data: T[];
+  onRowClick?: (item: T) => void;
+  emptyMessage?: string;
+  rowHighlight?: (item: T) => string;
+}
+
+export function DataTable<T extends { id: string }>({
+  columns,
+  data,
+  onRowClick,
+  emptyMessage = "Sem dados. Clique para adicionar o primeiro item.",
+  rowHighlight,
+}: DataTableProps<T>) {
+  const { t } = useLanguage();
+
+  return (
+    <div className="w-full overflow-x-auto overflow-y-hidden border border-border rounded bg-card">
+      <table className="w-full min-w-[640px] text-left border-collapse">
+        <thead>
+          <tr className="border-b border-border bg-secondary/30">
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-[10px] uppercase tracking-widest text-muted-foreground font-bold"
+              >
+                {t(col.header)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/50">
+          {data.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="px-3 sm:px-4 py-8 text-center text-muted-foreground text-sm">
+                {t(emptyMessage)}
+              </td>
+            </tr>
+          ) : (
+            data.map((row) => (
+              <tr
+                key={row.id}
+                className={`hover:bg-surface-hover transition-colors ${
+                  onRowClick ? "cursor-pointer" : ""
+                } ${rowHighlight ? rowHighlight(row) : ""}`}
+                onClick={() => onRowClick?.(row)}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={`px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm ${
+                      col.mono ? "font-mono tabular-nums" : ""
+                    } text-foreground/90 ${col.className || ""}`}
+                  >
+                    {col.render
+                      ? col.render(row)
+                      : String((row as Record<string, unknown>)[col.key] ?? "")}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
