@@ -2398,9 +2398,12 @@ const BudgetsPage = () => {
           isFirstPurchase: false,
         });
       }
-    } catch {
+    } catch (error) {
       setPaperboardError(
-        "Não foi possível carregar a configuração de papelão.",
+        normalizeBudgetError(
+          error,
+          "Não foi possível carregar a configuração de papelão.",
+        ),
       );
     } finally {
       setIsLoadingPaperboard(false);
@@ -2440,8 +2443,13 @@ const BudgetsPage = () => {
         ),
       );
       setPaperboardError("");
-    } catch {
-      setPaperboardError("Não foi possível salvar a configuração de papelão.");
+    } catch (error) {
+      setPaperboardError(
+        normalizeBudgetError(
+          error,
+          "Não foi possível salvar a configuração de papelão.",
+        ),
+      );
     } finally {
       setIsSavingPaperboard(false);
     }
@@ -2480,8 +2488,13 @@ const BudgetsPage = () => {
         outsourcedCut: false,
         isFirstPurchase: false,
       });
-    } catch {
-      setPaperboardError("Não foi possível remover a configuração de papelão.");
+    } catch (error) {
+      setPaperboardError(
+        normalizeBudgetError(
+          error,
+          "Não foi possível remover a configuração de papelão.",
+        ),
+      );
     } finally {
       setIsSavingPaperboard(false);
     }
