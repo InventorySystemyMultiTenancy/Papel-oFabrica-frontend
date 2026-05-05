@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ApiError } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { listClients, type Client } from "@/services/clients";
+import { listOrders, type Order } from "@/services/orders";
 import {
   listConsignedStock,
   upsertConsignedStock,
@@ -26,6 +27,7 @@ export default function ConsignedStockPage() {
   const { toast } = useToast();
   const [items, setItems] = useState<ConsignedStockItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showMovForm, setShowMovForm] = useState<string | null>(null);
@@ -34,10 +36,11 @@ export default function ConsignedStockPage() {
 
   const [form, setForm] = useState<{
     clientId: string;
+    orderId: string;
     productName: string;
     quantity: number;
     notes: string;
-  }>({ clientId: "", productName: "", quantity: 0, notes: "" });
+  }>({ clientId: "", orderId: "", productName: "", quantity: 0, notes: "" });
   const [movForm, setMovForm] = useState<{
     movementType: "entrada" | "saida";
     quantity: number;
@@ -48,12 +51,12 @@ export default function ConsignedStockPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [stockItems, availableClients] = await Promise.all([
-        listConsignedStock(),
-        listClients({ isActive: true }),
-      ]);
+      const [stockItems, availableClients, availableOrders] = await Promise.all(
+        [listConsignedStock(), listClients({ isActive: true }), listOrders()],
+      );
       setItems(stockItems);
       setClients(availableClients);
+      setOrders(availableOrders);
     } catch (e) {
       toast({
         title: "Erro",
@@ -76,14 +79,20 @@ export default function ConsignedStockPage() {
       if (form.quantity > 0) {
         await addConsignedMovement(stock.id, {
           movementType: "entrada",
-          quantity: form.quantity,
+          quantity: Math.trunc(form.quantity),
           notes: form.notes || null,
-          reference: "saldo inicial",
+          reference: form.orderId ? `pedido:${form.orderId}` : "saldo inicial",
         });
       }
       toast({ title: "Estoque consignado registrado" });
       setShowForm(false);
-      setForm({ clientId: "", productName: "", quantity: 0, notes: "" });
+      setForm({
+        clientId: "",
+        orderId: "",
+        productName: "",
+        quantity: 0,
+        notes: "",
+      });
       load();
     } catch (e) {
       toast({
@@ -186,6 +195,25 @@ export default function ConsignedStockPage() {
               </div>
               <div className="space-y-1 sm:col-span-2">
                 <label className="text-xs text-muted-foreground">
+                  Pedido (opcional)
+                </label>
+                <select
+                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
+                  value={form.orderId}
+                  onChange={(e) =>
+                    setForm({ ...form, orderId: e.target.value })
+                  }
+                >
+                  <option value="">Sem pedido vinculado</option>
+                  {orders.map((order) => (
+                    <option key={order.id} value={order.id}>
+                      {`Pedido ${order.id.slice(0, 8)} - ${order.status}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs text-muted-foreground">
                   Descrição do Produto *
                 </label>
                 <input
@@ -203,12 +231,15 @@ export default function ConsignedStockPage() {
                 </label>
                 <input
                   type="number"
-                  step="0.001"
-                  min={0}
+                  step="1"
+                  min={1}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
                   value={form.quantity || ""}
                   onChange={(e) =>
-                    setForm({ ...form, quantity: Number(e.target.value) })
+                    setForm({
+                      ...form,
+                      quantity: Math.trunc(Number(e.target.value)),
+                    })
                   }
                   required
                 />
@@ -282,12 +313,15 @@ export default function ConsignedStockPage() {
                 </label>
                 <input
                   type="number"
-                  step="0.001"
-                  min={0}
+                  step="1"
+                  min={1}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
                   value={movForm.quantity || ""}
                   onChange={(e) =>
-                    setMovForm({ ...movForm, quantity: Number(e.target.value) })
+                    setMovForm({
+                      ...movForm,
+                      quantity: Math.trunc(Number(e.target.value)),
+                    })
                   }
                   required
                 />
@@ -439,6 +473,11 @@ export default function ConsignedStockPage() {
                       {item.clientName && (
                         <div className="text-xs text-muted-foreground">
                           Cliente: {item.clientName}
+                        </div>
+                      )}
+                      {item.orderId && (
+                        <div className="text-xs text-muted-foreground">
+                          Pedido: {item.orderId}
                         </div>
                       )}
                       {item.notes && (

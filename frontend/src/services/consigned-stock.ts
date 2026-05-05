@@ -1,9 +1,10 @@
-import { request, parseCollection } from "@/services/api";
+import { request, parseCollection, toNullableString } from "@/services/api";
 
 export interface ConsignedStockItem {
   id: string;
   clientId: string | null;
   clientName?: string;
+  orderId: string | null;
   productName: string;
   quantity: number;
   notes: string | null;
@@ -23,6 +24,7 @@ export interface ConsignedMovement {
 
 export type UpsertConsignedStockInput = {
   clientId: string;
+  orderId?: string | null;
   productId?: string | null;
   productName: string;
   quantity: number;
@@ -46,6 +48,7 @@ function normalizeItem(raw: Record<string, unknown>): ConsignedStockItem {
     clientName: (raw.client_name ?? raw.clientName ?? undefined) as
       | string
       | undefined,
+    orderId: (raw.order_id ?? raw.orderId ?? null) as string | null,
     productName: (raw.product_name ??
       raw.productName ??
       raw.product_description ??
@@ -95,6 +98,7 @@ export async function upsertConsignedStock(
 ): Promise<ConsignedStockItem> {
   const payload = {
     clientId: input.clientId,
+    orderId: toNullableString(input.orderId),
     productId: input.productId ?? null,
     productName: input.productName ?? input.productDescription ?? "",
     notes: input.notes ?? null,
@@ -113,7 +117,7 @@ export async function addConsignedMovement(
 ): Promise<ConsignedMovement> {
   const payload = {
     movementType: input.movementType ?? input.type,
-    quantity: input.quantity,
+    quantity: Math.trunc(input.quantity),
     reference: input.reference ?? input.performedBy ?? null,
     notes: input.notes ?? null,
   };
