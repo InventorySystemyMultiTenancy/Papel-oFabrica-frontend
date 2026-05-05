@@ -2132,18 +2132,21 @@ const BudgetsPage = () => {
   const detailFinalPriceWithExpenses =
     detailTotalCostWithExpenses * (1 + detailProfitMargin);
   const paperboardPreview = calculatePaperboardPreview(paperboardForm);
-  const detailTotalCostDisplay =
-    paperboardPreview?.estimatedCost ??
-    paperboardConfig?.estimatedCost ??
-    detailTotalCostWithExpenses;
-  const detailFinalPriceDisplay =
-    paperboardPreview?.suggestedPrice ??
-    paperboardConfig?.suggestedPrice ??
-    detailFinalPriceWithExpenses;
+  const detailPersistedTotalCost = Math.max(
+    0,
+    Number(selectedBudget?.totalCost) || detailTotalCostWithExpenses,
+  );
+  const detailPersistedFinalPrice = Math.max(
+    0,
+    Number(selectedBudget?.finalPrice) || detailFinalPriceWithExpenses,
+  );
+  const detailTotalCostDisplay = detailPersistedTotalCost;
+  const detailFinalPriceDisplay = detailPersistedFinalPrice;
   const detailClaMarginDisplay =
-    detailTotalCostDisplay > 0
-      ? ((detailFinalPriceDisplay - detailTotalCostDisplay) /
-          detailTotalCostDisplay) *
+    (paperboardPreview?.estimatedCost ?? 0) > 0
+      ? (((paperboardPreview?.suggestedPrice ?? 0) -
+          (paperboardPreview?.estimatedCost ?? 0)) /
+          (paperboardPreview?.estimatedCost ?? 1)) *
         100
       : 0;
 
@@ -5245,6 +5248,10 @@ const BudgetsPage = () => {
                         <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
                           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
                             Prévia CLA em tempo real
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mb-2">
+                            Estes valores são apenas prévia. O orçamento só é
+                            atualizado após clicar em Salvar Configuração.
                           </p>
                           <p>
                             <span className="text-muted-foreground">
