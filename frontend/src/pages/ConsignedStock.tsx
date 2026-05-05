@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ApiError } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
+import { listClients, type Client } from "@/services/clients";
 import {
   listConsignedStock,
   upsertConsignedStock,
@@ -24,6 +25,7 @@ const formatDate = (v: string) => new Date(v).toLocaleDateString("pt-BR");
 export default function ConsignedStockPage() {
   const { toast } = useToast();
   const [items, setItems] = useState<ConsignedStockItem[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showMovForm, setShowMovForm] = useState<string | null>(null);
@@ -31,22 +33,27 @@ export default function ConsignedStockPage() {
   const [showHistory, setShowHistory] = useState<string | null>(null);
 
   const [form, setForm] = useState<{
-    productDescription: string;
+    clientId: string;
+    productName: string;
     quantity: number;
-    unit: string;
     notes: string;
-  }>({ productDescription: "", quantity: 0, unit: "un", notes: "" });
+  }>({ clientId: "", productName: "", quantity: 0, notes: "" });
   const [movForm, setMovForm] = useState<{
-    type: "entrada" | "saida";
+    movementType: "entrada" | "saida";
     quantity: number;
     notes: string;
-    performedBy: string;
-  }>({ type: "entrada", quantity: 0, notes: "", performedBy: "" });
+    reference: string;
+  }>({ movementType: "entrada", quantity: 0, notes: "", reference: "" });
 
   const load = async () => {
     setLoading(true);
     try {
-      setItems(await listConsignedStock());
+      const [stockItems, availableClients] = await Promise.all([
+        listConsignedStock(),
+        listClients({ isActive: true }),
+      ]);
+      setItems(stockItems);
+      setClients(availableClients);
     } catch (e) {
       toast({
         title: "Erro",
@@ -65,10 +72,18 @@ export default function ConsignedStockPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await upsertConsignedStock(form);
+      const stock = await upsertConsignedStock(form);
+      if (form.quantity > 0) {
+        await addConsignedMovement(stock.id, {
+          movementType: "entrada",
+          quantity: form.quantity,
+          notes: form.notes || null,
+          reference: "saldo inicial",
+        });
+      }
       toast({ title: "Estoque consignado registrado" });
       setShowForm(false);
-      setForm({ productDescription: "", quantity: 0, unit: "un", notes: "" });
+      setForm({ clientId: "", productName: "", quantity: 0, notes: "" });
       load();
     } catch (e) {
       toast({
@@ -84,9 +99,14 @@ export default function ConsignedStockPage() {
     if (!showMovForm) return;
     try {
       await addConsignedMovement(showMovForm, movForm);
-      toast({ title: `Movimentação (${movForm.type}) registrada` });
+      toast({ title: `Movimentação (${movForm.movementType}) registrada` });
       setShowMovForm(null);
-      setMovForm({ type: "entrada", quantity: 0, notes: "", performedBy: "" });
+      setMovForm({
+        movementType: "entrada",
+        quantity: 0,
+        notes: "",
+        reference: "",
+      });
       load();
     } catch (e) {
       toast({
@@ -146,13 +166,33 @@ export default function ConsignedStockPage() {
             >
               <div className="space-y-1 sm:col-span-2">
                 <label className="text-xs text-muted-foreground">
+                  Cliente *
+                </label>
+                <select
+                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
+                  value={form.clientId}
+                  onChange={(e) =>
+                    setForm({ ...form, clientId: e.target.value })
+                  }
+                  required
+                >
+                  <option value="">Selecione um cliente</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs text-muted-foreground">
                   Descrição do Produto *
                 </label>
                 <input
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={form.productDescription}
+                  value={form.productName}
                   onChange={(e) =>
-                    setForm({ ...form, productDescription: e.target.value })
+                    setForm({ ...form, productName: e.target.value })
                   }
                   required
                 />
@@ -177,8 +217,8 @@ export default function ConsignedStockPage() {
                 <label className="text-xs text-muted-foreground">Unidade</label>
                 <input
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={form.unit}
-                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  value="un"
+                  readOnly
                   placeholder="un, kg, cx..."
                 />
               </div>
@@ -224,11 +264,11 @@ export default function ConsignedStockPage() {
                 <label className="text-xs text-muted-foreground">Tipo</label>
                 <select
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={movForm.type}
+                  value={movForm.movementType}
                   onChange={(e) =>
                     setMovForm({
                       ...movForm,
-                      type: e.target.value as "entrada" | "saida",
+                      movementType: e.target.value as "entrada" | "saida",
                     })
                   }
                 >
@@ -254,13 +294,13 @@ export default function ConsignedStockPage() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">
-                  Realizado por
+                  Referência
                 </label>
                 <input
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={movForm.performedBy}
+                  value={movForm.reference}
                   onChange={(e) =>
-                    setMovForm({ ...movForm, performedBy: e.target.value })
+                    setMovForm({ ...movForm, reference: e.target.value })
                   }
                 />
               </div>
@@ -327,7 +367,7 @@ export default function ConsignedStockPage() {
                       Quantidade
                     </th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      Realizado por
+                      Referência
                     </th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">
                       Obs
@@ -340,19 +380,19 @@ export default function ConsignedStockPage() {
                       <td className="px-3 py-2">{formatDate(m.createdAt)}</td>
                       <td className="px-3 py-2">
                         <span
-                          className={`flex items-center gap-1 text-xs font-medium ${m.type === "entrada" ? "text-green-600" : "text-destructive"}`}
+                          className={`flex items-center gap-1 text-xs font-medium ${m.movementType === "entrada" ? "text-green-600" : "text-destructive"}`}
                         >
-                          {m.type === "entrada" ? (
+                          {m.movementType === "entrada" ? (
                             <ArrowDown className="h-3 w-3" />
                           ) : (
                             <ArrowUp className="h-3 w-3" />
                           )}
-                          {m.type === "entrada" ? "Entrada" : "Saída"}
+                          {m.movementType === "entrada" ? "Entrada" : "Saída"}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-medium">{m.quantity}</td>
                       <td className="px-3 py-2 text-muted-foreground">
-                        {m.performedBy ?? "—"}
+                        {m.reference ?? "—"}
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">
                         {m.notes ?? "—"}
@@ -395,9 +435,12 @@ export default function ConsignedStockPage() {
                 {items.map((item) => (
                   <tr key={item.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3">
-                      <div className="font-medium">
-                        {item.productDescription}
-                      </div>
+                      <div className="font-medium">{item.productName}</div>
+                      {item.clientName && (
+                        <div className="text-xs text-muted-foreground">
+                          Cliente: {item.clientName}
+                        </div>
+                      )}
                       {item.notes && (
                         <div className="text-xs text-muted-foreground">
                           {item.notes}
@@ -405,7 +448,7 @@ export default function ConsignedStockPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium text-primary">
-                      {item.quantity} {item.unit}
+                      {item.quantity}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(item.updatedAt)}
