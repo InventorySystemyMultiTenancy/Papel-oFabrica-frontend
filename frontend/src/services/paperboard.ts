@@ -73,11 +73,19 @@ const toNumOrNull = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+const unwrapData = (raw: unknown): Record<string, unknown> | null => {
+  const payload = toRecord(raw);
+  if (!payload) return null;
+
+  const nested = toRecord(payload.data);
+  return nested ?? payload;
+};
+
 const normalize = (raw: unknown): PaperboardConfig | null => {
-  const item = toRecord(raw);
+  const item = unwrapData(raw);
   if (!item) return null;
   const id = toStr(item.id, "").trim();
-  const budgetId = toStr(item.budgetId, "").trim();
+  const budgetId = toStr(item.budgetId ?? item.budget_id, "").trim();
   if (!id || !budgetId) return null;
   return {
     id,
