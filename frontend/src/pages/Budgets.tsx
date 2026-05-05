@@ -153,6 +153,10 @@ const DEFAULT_BUDGET_PDF_PAYMENT_TERMS = [
 ].join("\n");
 
 const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 10;
+const PAPERBOARD_MATERIAL_COST_FACTOR = 0.0042;
+const PAPERBOARD_DEFAULT_CUTTING_COST_PER_KG = 0.15;
+const PAPERBOARD_DEFAULT_CREASING_COST_PER_KG = 0.08;
+const PAPERBOARD_DEFAULT_MARKUP_PERCENTAGE = 35;
 
 const PAYMENT_TERMS_PRESETS = [
   "Ato",
@@ -253,6 +257,97 @@ interface BudgetRow {
   profitMargin: number;
   finalPrice: number;
 }
+
+interface PaperboardPreview {
+  estimatedCost: number;
+  suggestedPrice: number;
+  totalSheets: number;
+  totalBundles: number;
+}
+
+const calculatePaperboardPreview = (
+  input: PaperboardConfigInput,
+): PaperboardPreview | null => {
+  const length = Number(input.length);
+  const width = Number(input.width);
+  const height = Number(input.height);
+  const gramatura = Number(input.gramatura);
+  const quantity = Number(input.quantity);
+
+  if (
+    !Number.isFinite(length) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    !Number.isFinite(gramatura) ||
+    !Number.isFinite(quantity) ||
+    length <= 0 ||
+    width <= 0 ||
+    height <= 0 ||
+    gramatura <= 0 ||
+    quantity <= 0
+  ) {
+    return null;
+  }
+
+  const areaCm2 = length * width;
+  const sheetsPerBundle =
+    input.sheetsPerBundle && input.sheetsPerBundle > 0
+      ? input.sheetsPerBundle
+      : null;
+  const sheetUnitCost =
+    input.sheetUnitCost && input.sheetUnitCost > 0 ? input.sheetUnitCost : null;
+  const cuttingCostPerKg =
+    input.cuttingCostPerKg ?? PAPERBOARD_DEFAULT_CUTTING_COST_PER_KG;
+  const creasingCostPerKg =
+    input.creasingCostPerKg ?? PAPERBOARD_DEFAULT_CREASING_COST_PER_KG;
+  const lossPercentage = Math.max(0, Number(input.lossPercentage ?? 0));
+  const markupPercentage = Math.max(
+    0,
+    Number(input.markupPercentage ?? PAPERBOARD_DEFAULT_MARKUP_PERCENTAGE),
+  );
+  const clicheCost = Number(input.clicheCost ?? 0);
+  const clichePrice = Number(input.clichePrice ?? 0);
+
+  const packageArea = Math.max(
+    (length * width + 2 * height * (length + width)) / 10000,
+    areaCm2 / 10000,
+  );
+  const lossFactor = input.usesFullSheet ? 1 + lossPercentage / 100 : 1;
+  const totalArea = packageArea * quantity * lossFactor;
+
+  const sheetArea = Math.max(areaCm2 / 10000, 0.0001);
+  const totalSheets = Math.max(totalArea / sheetArea, 0);
+  const totalBundles =
+    sheetsPerBundle && sheetsPerBundle > 0
+      ? Math.ceil(totalSheets / sheetsPerBundle)
+      : 0;
+
+  const baseMaterialCost =
+    totalArea * gramatura * PAPERBOARD_MATERIAL_COST_FACTOR;
+  const materialCost =
+    sheetUnitCost && sheetUnitCost > 0
+      ? totalSheets * sheetUnitCost
+      : baseMaterialCost;
+  const cuttingCost = input.outsourcedCut ? quantity * cuttingCostPerKg : 0;
+  const creasingCost = quantity * creasingCostPerKg;
+  const lossCost = input.usesFullSheet
+    ? materialCost * (lossPercentage / 100)
+    : 0;
+  const clicheAppliedCost = input.isFirstPurchase ? clicheCost : 0;
+
+  const estimatedCost =
+    materialCost + cuttingCost + creasingCost + lossCost + clicheAppliedCost;
+  const suggestedPrice =
+    estimatedCost * (1 + markupPercentage / 100) +
+    (input.isFirstPurchase ? clichePrice : 0);
+
+  return {
+    estimatedCost,
+    suggestedPrice,
+    totalSheets,
+    totalBundles,
+  };
+};
 
 const normalizeDateOnly = (value: string | null | undefined) => {
   if (!value || typeof value !== "string") {
@@ -2001,6 +2096,21 @@ const BudgetsPage = () => {
     detailApplicableCostsCost;
   const detailFinalPriceWithExpenses =
     detailTotalCostWithExpenses * (1 + detailProfitMargin);
+  const paperboardPreview = calculatePaperboardPreview(paperboardForm);
+  const detailTotalCostDisplay =
+    paperboardPreview?.estimatedCost ??
+    paperboardConfig?.estimatedCost ??
+    detailTotalCostWithExpenses;
+  const detailFinalPriceDisplay =
+    paperboardPreview?.suggestedPrice ??
+    paperboardConfig?.suggestedPrice ??
+    detailFinalPriceWithExpenses;
+  const detailClaMarginDisplay =
+    detailTotalCostDisplay > 0
+      ? ((detailFinalPriceDisplay - detailTotalCostDisplay) /
+          detailTotalCostDisplay) *
+        100
+      : 0;
 
   const closeCreateModal = () => {
     setModal(false);
@@ -2319,6 +2429,16 @@ const BudgetsPage = () => {
         paperboardForm,
       );
       setPaperboardConfig(saved);
+      const refreshedBudget = mapBudgetFromApi(
+        await getBudgetById(selectedBudget.id),
+        clientsCatalog,
+      );
+      setSelectedBudget(refreshedBudget);
+      setData((current) =>
+        current.map((item) =>
+          item.id === refreshedBudget.id ? refreshedBudget : item,
+        ),
+      );
       setPaperboardError("");
     } catch {
       setPaperboardError("Não foi possível salvar a configuração de papelão.");
@@ -2334,6 +2454,16 @@ const BudgetsPage = () => {
     try {
       await deletePaperboardConfig(selectedBudget.id);
       setPaperboardConfig(null);
+      const refreshedBudget = mapBudgetFromApi(
+        await getBudgetById(selectedBudget.id),
+        clientsCatalog,
+      );
+      setSelectedBudget(refreshedBudget);
+      setData((current) =>
+        current.map((item) =>
+          item.id === refreshedBudget.id ? refreshedBudget : item,
+        ),
+      );
       setPaperboardForm({
         length: 0,
         width: 0,
@@ -4673,7 +4803,7 @@ const BudgetsPage = () => {
                         Custo total
                       </p>
                       <p className="font-mono font-bold text-foreground">
-                        {formatCurrency(detailTotalCostWithExpenses)}
+                        {formatCurrency(detailTotalCostDisplay)}
                       </p>
                     </div>
                     <div>
@@ -4681,10 +4811,16 @@ const BudgetsPage = () => {
                         Preço total
                       </p>
                       <p className="font-mono font-bold text-primary">
-                        {formatCurrency(detailFinalPriceWithExpenses)}
+                        {formatCurrency(detailFinalPriceDisplay)}
                       </p>
                     </div>
                   </div>
+                  {paperboardConfig && (
+                    <p className="mt-3 text-[11px] text-muted-foreground text-center">
+                      Custo e preço total calculados automaticamente com base no
+                      CLA da configuração de papelão.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -5054,6 +5190,61 @@ const BudgetsPage = () => {
                               }))
                             }
                           />
+                        </div>
+                      )}
+
+                      {paperboardPreview && (
+                        <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                            Prévia CLA em tempo real
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Custo estimado:
+                            </span>{" "}
+                            <strong className="text-primary">
+                              {formatCurrency(paperboardPreview.estimatedCost)}
+                            </strong>
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Preço sugerido:
+                            </span>{" "}
+                            <strong>
+                              {formatCurrency(paperboardPreview.suggestedPrice)}
+                            </strong>
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Margem CLA:
+                            </span>{" "}
+                            <strong>
+                              {detailClaMarginDisplay.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                              %
+                            </strong>
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Folhas estimadas:
+                            </span>{" "}
+                            {paperboardPreview.totalSheets.toLocaleString(
+                              "pt-BR",
+                              { maximumFractionDigits: 2 },
+                            )}
+                          </p>
+                          {paperboardPreview.totalBundles > 0 && (
+                            <p>
+                              <span className="text-muted-foreground">
+                                Fardos estimados:
+                              </span>{" "}
+                              {paperboardPreview.totalBundles.toLocaleString(
+                                "pt-BR",
+                              )}
+                            </p>
+                          )}
                         </div>
                       )}
 
