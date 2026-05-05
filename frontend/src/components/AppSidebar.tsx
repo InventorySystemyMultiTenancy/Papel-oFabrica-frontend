@@ -1,4 +1,24 @@
-import { LayoutDashboard, Users, User, Briefcase, Box, Package, FileText, Hammer, Truck, ShoppingCart, DollarSign } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  User,
+  Briefcase,
+  Box,
+  Package,
+  FileText,
+  Hammer,
+  Truck,
+  ShoppingCart,
+  DollarSign,
+  Tag,
+  CreditCard,
+  MapPin,
+  Recycle,
+  ShoppingBag,
+  Archive,
+  Calculator,
+  BarChart2,
+} from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/auth/AuthProvider";
 import type { UserRole } from "@/auth/types";
@@ -14,17 +34,120 @@ interface NavItem {
 }
 
 const navItems = [
-  { title: "Painel", url: "/", icon: LayoutDashboard, allowedRoles: ["admin", "gerente", "funcionario"] },
-  { title: "Clientes", url: "/clients", icon: Users, allowedRoles: ["admin", "gerente"] },
-  { title: "Funcionários", url: "/employees", icon: User, allowedRoles: ["admin", "gerente"] },
-  { title: "Equipes", url: "/teams", icon: Briefcase, allowedRoles: ["admin", "gerente"] },
-  { title: "Estoque", url: "/products", icon: Box, allowedRoles: ["admin", "gerente"] },
-  { title: "Movimentação de Estoque", url: "/stock", icon: Package, allowedRoles: ["admin", "gerente"] },
-  { title: "Orçamentos", url: "/budgets", icon: FileText, allowedRoles: ["admin", "gerente"] },
-  { title: "Produção", url: "/production", icon: Hammer, allowedRoles: ["admin", "gerente", "funcionario"] },
-  { title: "Logística", url: "/logistics", icon: Truck, allowedRoles: ["admin", "gerente", "funcionario"] },
-  { title: "Pedidos", url: "/orders", icon: ShoppingCart, allowedRoles: ["admin", "gerente"] },
-  { title: "Financeiro", url: "/financial", icon: DollarSign, allowedRoles: ["admin", "gerente"] },
+  {
+    title: "Painel",
+    url: "/",
+    icon: LayoutDashboard,
+    allowedRoles: ["admin", "gerente", "funcionario"],
+  },
+  {
+    title: "Dashboard Financeiro",
+    url: "/dashboard",
+    icon: BarChart2,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Clientes",
+    url: "/clients",
+    icon: Users,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Funcionários",
+    url: "/employees",
+    icon: User,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Equipes",
+    url: "/teams",
+    icon: Briefcase,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Estoque",
+    url: "/products",
+    icon: Box,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Movimentação de Estoque",
+    url: "/stock",
+    icon: Package,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Orçamentos",
+    url: "/budgets",
+    icon: FileText,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Produção",
+    url: "/production",
+    icon: Hammer,
+    allowedRoles: ["admin", "gerente", "funcionario"],
+  },
+  {
+    title: "Logística",
+    url: "/logistics",
+    icon: Truck,
+    allowedRoles: ["admin", "gerente", "funcionario"],
+  },
+  {
+    title: "Pedidos",
+    url: "/orders",
+    icon: ShoppingCart,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Financeiro",
+    url: "/financial",
+    icon: DollarSign,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Clichês",
+    url: "/cliches",
+    icon: Tag,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Contas a Pagar",
+    url: "/accounts-payable",
+    icon: CreditCard,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Roteiros de Entrega",
+    url: "/delivery-routes",
+    icon: MapPin,
+    allowedRoles: ["admin", "gerente", "funcionario"],
+  },
+  {
+    title: "Resíduos",
+    url: "/waste",
+    icon: Recycle,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Pedidos de Compra",
+    url: "/purchase-orders",
+    icon: ShoppingBag,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Estoque Consignado",
+    url: "/consigned-stock",
+    icon: Archive,
+    allowedRoles: ["admin", "gerente"],
+  },
+  {
+    title: "Cotação Rápida",
+    url: "/pricing",
+    icon: Calculator,
+    allowedRoles: ["admin", "gerente"],
+  },
 ] satisfies NavItem[];
 
 interface AppSidebarProps {
@@ -32,7 +155,10 @@ interface AppSidebarProps {
   onCloseMobile?: () => void;
 }
 
-export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProps) {
+export function AppSidebar({
+  mobileOpen = false,
+  onCloseMobile,
+}: AppSidebarProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { t } = useLanguage();
@@ -71,13 +197,18 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
           <span className="block font-bold tracking-tight text-sm sm:text-base text-orange-400">
             4D Embalagens
           </span>
-          <span className="block text-[10px] tracking-widest text-white/45 uppercase">Indústria de Papelão</span>
+          <span className="block text-[10px] tracking-widest text-white/45 uppercase">
+            Indústria de Papelão
+          </span>
         </div>
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
         {visibleItems.map((item) => {
-          const isActive = item.url === "/" ? location.pathname === "/" : location.pathname.startsWith(item.url);
+          const isActive =
+            item.url === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(item.url);
 
           return (
             <NavLink
@@ -106,8 +237,12 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
       <div className="p-4 border-t border-white/10">
         {user && (
           <div className="mb-3">
-            <p className="text-xs font-medium text-foreground truncate">{user.name}</p>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{user.role}</p>
+            <p className="text-xs font-medium text-foreground truncate">
+              {user.name}
+            </p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {user.role}
+            </p>
           </div>
         )}
 
@@ -118,7 +253,9 @@ export function AppSidebar({ mobileOpen = false, onCloseMobile }: AppSidebarProp
           {t("Sair")}
         </button>
 
-        <p className="text-[10px] uppercase tracking-widest text-orange-400/70">{t("Indústria de Papelão v1.0")}</p>
+        <p className="text-[10px] uppercase tracking-widest text-orange-400/70">
+          {t("Indústria de Papelão v1.0")}
+        </p>
       </div>
     </>
   );

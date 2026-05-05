@@ -21,6 +21,14 @@ import LogisticsPage from "./pages/Logistics.tsx";
 import ProductionTrackingPublicPage from "./pages/ProductionTrackingPublic.tsx";
 import OrdersPage from "./pages/Orders.tsx";
 import FinancialPage from "./pages/Financial.tsx";
+import ClichesPage from "./pages/Cliches.tsx";
+import AccountsPayablePage from "./pages/AccountsPayable.tsx";
+import DeliveryRoutesPage from "./pages/DeliveryRoutes.tsx";
+import WastePage from "./pages/Waste.tsx";
+import PurchaseOrdersPage from "./pages/PurchaseOrders.tsx";
+import ConsignedStockPage from "./pages/ConsignedStock.tsx";
+import PricingPage from "./pages/Pricing.tsx";
+import DashboardPage from "./pages/Dashboard.tsx";
 
 const queryClient = new QueryClient();
 
@@ -34,7 +42,10 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/acompanhar-producao/:token" element={<ProductionTrackingPublicPage />} />
+              <Route
+                path="/acompanhar-producao/:token"
+                element={<ProductionTrackingPublicPage />}
+              />
 
               <Route element={<RequireAuth />}>
                 <Route path="/" element={<Index />} />
@@ -42,7 +53,9 @@ const App = () => (
                 <Route path="/logistics" element={<LogisticsPage />} />
                 <Route path="/forbidden" element={<ForbiddenPage />} />
 
-                <Route element={<RequireRoles allowedRoles={["admin", "gerente"]} />}>
+                <Route
+                  element={<RequireRoles allowedRoles={["admin", "gerente"]} />}
+                >
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/employees" element={<EmployeesPage />} />
                   <Route path="/teams" element={<TeamsPage />} />
@@ -51,6 +64,26 @@ const App = () => (
                   <Route path="/budgets" element={<BudgetsPage />} />
                   <Route path="/orders" element={<OrdersPage />} />
                   <Route path="/financial" element={<FinancialPage />} />
+                  <Route path="/cliches" element={<ClichesPage />} />
+                  <Route
+                    path="/accounts-payable"
+                    element={<AccountsPayablePage />}
+                  />
+                  <Route
+                    path="/delivery-routes"
+                    element={<DeliveryRoutesPage />}
+                  />
+                  <Route path="/waste" element={<WastePage />} />
+                  <Route
+                    path="/purchase-orders"
+                    element={<PurchaseOrdersPage />}
+                  />
+                  <Route
+                    path="/consigned-stock"
+                    element={<ConsignedStockPage />}
+                  />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                 </Route>
               </Route>
 
