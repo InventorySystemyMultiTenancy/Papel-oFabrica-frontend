@@ -29,7 +29,7 @@ interface NavItem {
 const navItems = [
   {
     title: "Painel",
-    url: "/",
+    url: "/overview",
     icon: LayoutDashboard,
     allowedRoles: ["admin", "gerente", "funcionario"],
   },
