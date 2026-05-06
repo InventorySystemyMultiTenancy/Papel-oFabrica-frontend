@@ -12,16 +12,9 @@ import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { DataTable } from "@/components/DataTable";
 import { FormField } from "@/components/FormField";
 import { StatusBadge } from "@/components/StatusBadge";
-import { toast } from "@/components/ui/use-toast";
 import { listBudgets, type Budget } from "@/services/budgets";
 import { listProductions, EmployeeProduction } from "@/services/productions";
-import {
-  listActiveProductionMaterialConsumption,
-  listLogisticsMonthlyClosings,
-  type LogisticsMonthlyClosing,
-  upsertLogisticsMonthlyClosing,
-} from "@/services/logistics";
-import { listStockMovements } from "@/services/stock";
+import { getDashboardSummary } from "@/services/dashboard";
 import { listEmployees } from "@/services/employees";
 import {
   listPurchaseOrders,
@@ -61,14 +54,6 @@ interface LogisticsProductionRow extends EmployeeProduction {
   deliveryHealthStatus: DeliveryHealthStatus;
 }
 
-interface MaterialUsageRow {
-  id: string;
-  material: string;
-  totalQuantity: number;
-  unit: string;
-  productionsCount: number;
-}
-
 interface FinancialBudgetRow {
   id: string;
   clientName: string;
@@ -76,16 +61,15 @@ interface FinancialBudgetRow {
   linkedRevenue: number;
   generalCost: number;
   applicableCost: number;
-  grossProfit: number;
-  netProfit: number;
+  generalProfit: number;
 }
 
 interface FinancialMonthRow {
   monthKey: string;
   month: string;
   generalCost: number;
-  grossProfit: number;
-  netProfit: number;
+  linkedRevenue: number;
+  generalProfit: number;
 }
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -95,8 +79,12 @@ const financialByProductionChartConfig = {
     label: "Gastos",
     color: "#ef4444",
   },
-  grossProfit: {
-    label: "Lucro",
+  linkedRevenue: {
+    label: "Receita",
+    color: "#0ea5e9",
+  },
+  generalProfit: {
+    label: "Lucro Geral",
     color: "#22c55e",
   },
 } satisfies ChartConfig;
@@ -106,13 +94,13 @@ const financialByMonthChartConfig = {
     label: "Gastos",
     color: "#ef4444",
   },
-  grossProfit: {
-    label: "Lucro",
-    color: "#22c55e",
-  },
-  netProfit: {
-    label: "Lucro Líquido",
+  linkedRevenue: {
+    label: "Receita",
     color: "#0ea5e9",
+  },
+  generalProfit: {
+    label: "Lucro Geral",
+    color: "#22c55e",
   },
 } satisfies ChartConfig;
 
@@ -248,15 +236,6 @@ const getApprovedReferenceDate = (budget: Budget) =>
       budget.deliveryDate,
   );
 
-const getPreApprovedReferenceDate = (budget: Budget) =>
-  normalizeDeliveryDate(
-    budget.financialSummary?.costsAppliedAt ||
-      budget.costsAppliedAt ||
-      budget.updatedAt ||
-      budget.createdAt ||
-      budget.deliveryDate,
-  );
-
 const getPurchaseOrderReferenceDate = (purchaseOrder: PurchaseOrder) =>
   normalizeDeliveryDate(
     purchaseOrder.receivedAt ||
@@ -306,36 +285,6 @@ const getMonthReference = (deliveryDate: string) => {
   };
 };
 
-const getCurrentReferenceMonth = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-
-  return `${year}-${month}`;
-};
-
-const formatReferenceMonth = (referenceMonth: string) => {
-  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
-    return referenceMonth;
-  }
-
-  const [year, month] = referenceMonth.split("-");
-  return `${month}/${year}`;
-};
-
-const formatDateTime = (value: string) => {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-};
 
 const LogisticsPage = () => {
   const { canViewFinancials } = useRoleAccess();
@@ -343,9 +292,6 @@ const LogisticsPage = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [wasteRecords, setWasteRecords] = useState<WasteRecord[]>([]);
-  const [materialUsageRows, setMaterialUsageRows] = useState<
-    MaterialUsageRow[]
-  >([]);
   const [filterDateStart, setFilterDateStart] = useState("");
   const [filterDateEnd, setFilterDateEnd] = useState("");
   const [activeEmployeesCount, setActiveEmployeesCount] = useState<
@@ -354,15 +300,7 @@ const LogisticsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState("");
   const [secondaryWarning, setSecondaryWarning] = useState("");
-  const [referenceMonth, setReferenceMonth] = useState(
-    getCurrentReferenceMonth(),
-  );
-  const [closingFilterMonth, setClosingFilterMonth] = useState("");
-  const [monthlyClosings, setMonthlyClosings] = useState<
-    LogisticsMonthlyClosing[]
-  >([]);
-  const [isSavingClosing, setIsSavingClosing] = useState(false);
-  const [isLoadingClosings, setIsLoadingClosings] = useState(false);
+  const [receivablePaidTotal, setReceivablePaidTotal] = useState(0);
 
   const loadLogisticsData = async () => {
     setIsLoading(true);
@@ -376,27 +314,14 @@ const LogisticsPage = () => {
         budgetsResult,
         purchaseOrdersResult,
         wasteRecordsResult,
-        materialConsumptionResult,
-        stockMovementsFallbackResult,
+        dashboardSummaryResult,
       ] = await Promise.allSettled([
         listProductions({ active: true }),
         listEmployees(),
         listBudgets(),
         listPurchaseOrders(),
         listWasteRecords(),
-        listActiveProductionMaterialConsumption({
-          startDate: filterDateStart || undefined,
-          endDate: filterDateEnd || undefined,
-        }),
-        listStockMovements({
-          movementType: "saida",
-          referenceType: "production",
-          activeOnly: true,
-          startDate: filterDateStart || undefined,
-          endDate: filterDateEnd || undefined,
-          limit: 200,
-          offset: 0,
-        }),
+        getDashboardSummary(),
       ]);
 
       if (productionsResult.status !== "fulfilled") {
@@ -441,74 +366,14 @@ const LogisticsPage = () => {
         );
       }
 
-      if (
-        materialConsumptionResult.status === "fulfilled" &&
-        materialConsumptionResult.value.data.length > 0
-      ) {
-        setMaterialUsageRows(
-          materialConsumptionResult.value.data.map((item) => ({
-            id: item.productId,
-            material: item.productName,
-            unit: item.unit || "unidade",
-            totalQuantity: item.totalQuantityUsed,
-            productionsCount: item.activeProductionsCount,
-          })),
-        );
-      } else if (stockMovementsFallbackResult.status === "fulfilled") {
-        const movementsResult = stockMovementsFallbackResult;
-        const grouped = new Map<
-          string,
-          {
-            id: string;
-            material: string;
-            unit: string;
-            totalQuantity: number;
-            productionIds: Set<string>;
-          }
-        >();
-
-        movementsResult.value.data.forEach((movement) => {
-          const key = movement.productId || movement.productName;
-
-          if (!key) {
-            return;
-          }
-
-          const current = grouped.get(key);
-
-          if (!current) {
-            grouped.set(key, {
-              id: key,
-              material: movement.productName || "Produto",
-              unit: movement.unit || "unidade",
-              totalQuantity: Math.max(0, Number(movement.quantity) || 0),
-              productionIds: new Set(
-                movement.referenceId ? [movement.referenceId] : [],
-              ),
-            });
-            return;
-          }
-
-          current.totalQuantity += Math.max(0, Number(movement.quantity) || 0);
-
-          if (movement.referenceId) {
-            current.productionIds.add(movement.referenceId);
-          }
-        });
-
-        setMaterialUsageRows(
-          Array.from(grouped.values()).map((row) => ({
-            id: row.id,
-            material: row.material,
-            unit: row.unit,
-            totalQuantity: row.totalQuantity,
-            productionsCount: row.productionIds.size,
-          })),
+      if (dashboardSummaryResult.status === "fulfilled") {
+        setReceivablePaidTotal(
+          Math.max(0, Number(dashboardSummaryResult.value.receivablePaid) || 0),
         );
       } else {
-        setMaterialUsageRows([]);
+        setReceivablePaidTotal(0);
         warnings.push(
-          "Não foi possível obter materiais consumidos por produções ativas.",
+          "Não foi possível obter contas a receber pagas para compor receita vinculada.",
         );
       }
 
@@ -529,8 +394,8 @@ const LogisticsPage = () => {
       setBudgets([]);
       setPurchaseOrders([]);
       setWasteRecords([]);
-      setMaterialUsageRows([]);
       setActiveEmployeesCount(null);
+      setReceivablePaidTotal(0);
       setRequestError(
         `Não foi possível carregar dados de logística: ${getErrorMessage(error, "Erro inesperado.")}`,
       );
@@ -542,40 +407,6 @@ const LogisticsPage = () => {
   useEffect(() => {
     void loadLogisticsData();
   }, [filterDateStart, filterDateEnd]);
-
-  const loadMonthlyClosings = async (monthFilter = closingFilterMonth) => {
-    if (!canViewFinancials) {
-      setMonthlyClosings([]);
-      setIsLoadingClosings(false);
-      return;
-    }
-
-    setIsLoadingClosings(true);
-
-    try {
-      const closings = await listLogisticsMonthlyClosings(
-        monthFilter || undefined,
-      );
-      setMonthlyClosings(
-        [...closings].sort((a, b) =>
-          b.referenceMonth.localeCompare(a.referenceMonth),
-        ),
-      );
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Nao foi possivel carregar fechamentos",
-        description: getErrorMessage(error, "Erro inesperado."),
-      });
-      setMonthlyClosings([]);
-    } finally {
-      setIsLoadingClosings(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadMonthlyClosings(closingFilterMonth);
-  }, [closingFilterMonth, canViewFinancials]);
 
   const parsedFilterStart = useMemo(
     () => parseDateAtMidnight(filterDateStart),
@@ -591,30 +422,6 @@ const LogisticsPage = () => {
     parsedFilterEnd &&
     parsedFilterStart.getTime() > parsedFilterEnd.getTime(),
   );
-
-  const isFullMonthDateFilter = useMemo(() => {
-    if (hasInvalidDateRange || !parsedFilterStart || !parsedFilterEnd) {
-      return false;
-    }
-
-    const isSameMonthAndYear =
-      parsedFilterStart.getFullYear() === parsedFilterEnd.getFullYear() &&
-      parsedFilterStart.getMonth() === parsedFilterEnd.getMonth();
-
-    if (!isSameMonthAndYear) {
-      return false;
-    }
-
-    const isFirstDay = parsedFilterStart.getDate() === 1;
-    const lastDayOfMonth = new Date(
-      parsedFilterEnd.getFullYear(),
-      parsedFilterEnd.getMonth() + 1,
-      0,
-    ).getDate();
-    const isLastDay = parsedFilterEnd.getDate() === lastDayOfMonth;
-
-    return isFirstDay && isLastDay;
-  }, [hasInvalidDateRange, parsedFilterStart, parsedFilterEnd]);
 
   const isDateInSelectedRange = (value: string | null | undefined) => {
     if (!parsedFilterStart && !parsedFilterEnd) {
@@ -699,11 +506,6 @@ const LogisticsPage = () => {
     [activeProductionRows],
   );
 
-  const activeProductionsCost = useMemo(
-    () => activeProductions.reduce((sum, item) => sum + item.initialCost, 0),
-    [activeProductions],
-  );
-
   const approvedBudgets = useMemo(() => {
     if (hasInvalidDateRange) {
       return [] as Budget[];
@@ -716,37 +518,6 @@ const LogisticsPage = () => {
 
       return isDateInSelectedRange(getApprovedReferenceDate(budget));
     });
-  }, [budgets, hasInvalidDateRange, parsedFilterStart, parsedFilterEnd]);
-
-  const preApprovedAppliedCostsTotal = useMemo(() => {
-    if (hasInvalidDateRange) {
-      return 0;
-    }
-
-    return budgets
-      .filter((budget) => budget.status === "pre_approved")
-      .filter((budget) =>
-        isDateInSelectedRange(getPreApprovedReferenceDate(budget)),
-      )
-      .reduce((sum, budget) => {
-        const summaryApplied = Number(
-          budget.financialSummary?.costsAppliedValue ??
-            budget.costsAppliedValue,
-        );
-        const fallbackApplicable = Number(
-          budget.financialSummary?.costsApplicableValue ??
-            budget.costsApplicableValue,
-        );
-
-        const appliedValue =
-          Number.isFinite(summaryApplied) && summaryApplied > 0
-            ? summaryApplied
-            : Number.isFinite(fallbackApplicable)
-              ? fallbackApplicable
-              : 0;
-
-        return sum + Math.max(0, appliedValue);
-      }, 0);
   }, [budgets, hasInvalidDateRange, parsedFilterStart, parsedFilterEnd]);
 
   const purchaseOrdersActiveCost = useMemo(() => {
@@ -793,7 +564,7 @@ const LogisticsPage = () => {
     parsedFilterEnd,
   ]);
 
-  const { financialRows, budgetsWithoutMarginCount } = useMemo(() => {
+  const financialRows = useMemo(() => {
     const rows: FinancialBudgetRow[] = [];
 
     approvedBudgets.forEach((budget) => {
@@ -803,21 +574,21 @@ const LogisticsPage = () => {
           (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
         0,
       );
+      const expenseDepartmentsFromSummary = Number(
+        budget.financialSummary?.expenseDepartmentsCost ?? 0,
+      );
+      const expenseDepartmentsFromList = (budget.expenseDepartments || []).reduce(
+        (sum, item) => sum + (Number(item.amount) || 0),
+        0,
+      );
+      const expenseDepartmentsCost = Math.max(
+        0,
+        Number.isFinite(expenseDepartmentsFromSummary) &&
+          expenseDepartmentsFromSummary > 0
+          ? expenseDepartmentsFromSummary
+          : expenseDepartmentsFromList,
+      );
       const totalCostFromApi = Number(budget.totalCost);
-      const generalCost = Number.isFinite(totalCostFromApi) && totalCostFromApi > 0
-        ? totalCostFromApi
-        : materialTotal;
-      const finalPriceFromApi = Number(budget.finalPrice ?? budget.totalPrice);
-      const linkedRevenue =
-        Number.isFinite(finalPriceFromApi) && finalPriceFromApi > 0
-          ? finalPriceFromApi
-          : materialTotal;
-      const profitFromApi = Number(budget.profitValue);
-      const grossProfit =
-        Number.isFinite(profitFromApi)
-          ? profitFromApi
-          : linkedRevenue - generalCost;
-
       const applicableCostFromSummary = Number(
         budget.financialSummary?.costsApplicableValue ??
           budget.costsApplicableValue ??
@@ -834,8 +605,16 @@ const LogisticsPage = () => {
           ? applicableCostFromSummary
           : applicableCostFromList,
       );
-
-      const netProfit = grossProfit - applicableCost;
+      const generalCost =
+        Number.isFinite(totalCostFromApi) && totalCostFromApi > 0
+          ? totalCostFromApi
+          : materialTotal + expenseDepartmentsCost + applicableCost;
+      const finalPriceFromApi = Number(budget.finalPrice ?? budget.totalPrice);
+      const linkedRevenue =
+        Number.isFinite(finalPriceFromApi) && finalPriceFromApi > 0
+          ? finalPriceFromApi
+          : materialTotal;
+      const generalProfit = linkedRevenue - generalCost;
 
       rows.push({
         id: budget.id,
@@ -844,15 +623,11 @@ const LogisticsPage = () => {
         linkedRevenue,
         generalCost,
         applicableCost,
-        grossProfit,
-        netProfit,
+        generalProfit,
       });
     });
 
-    return {
-      financialRows: rows,
-      budgetsWithoutMarginCount: 0,
-    };
+    return rows;
   }, [approvedBudgets]);
 
   const financialTotals = useMemo(() => {
@@ -861,35 +636,34 @@ const LogisticsPage = () => {
         acc.linkedRevenue += item.linkedRevenue;
         acc.generalCost += item.generalCost;
         acc.applicableCost += item.applicableCost;
-        acc.grossProfit += item.grossProfit;
-        acc.netProfit += item.netProfit;
+        acc.generalProfit += item.generalProfit;
         return acc;
       },
       {
         linkedRevenue: 0,
         generalCost: 0,
         applicableCost: 0,
-        grossProfit: 0,
-        netProfit: 0,
+        generalProfit: 0,
       },
     );
 
+    const adjustedRevenue =
+      baseTotals.linkedRevenue + soldWasteRevenueTotal + receivablePaidTotal;
+    const adjustedCost = baseTotals.generalCost + purchaseOrdersActiveCost;
+    const adjustedProfit = adjustedRevenue - adjustedCost;
+
     return {
       ...baseTotals,
-      generalCost: baseTotals.generalCost + purchaseOrdersActiveCost,
-      linkedRevenue: baseTotals.linkedRevenue + soldWasteRevenueTotal,
+      generalCost: adjustedCost,
+      linkedRevenue: adjustedRevenue,
+      generalProfit: adjustedProfit,
     };
-  }, [financialRows, purchaseOrdersActiveCost, soldWasteRevenueTotal]);
-
-  const financialCoverageSummary =
-    approvedBudgets.length === 0
-      ? "Sem orçamentos aprovados"
-      : `${financialRows.length}/${approvedBudgets.length} aprovados oficialmente`;
-
-  const financialCoverageWarning =
-    approvedBudgets.length > 0 && budgetsWithoutMarginCount > 0
-      ? `Lucro calculado com ${financialRows.length} de ${approvedBudgets.length} orçamentos aprovados.`
-      : "";
+  }, [
+    financialRows,
+    purchaseOrdersActiveCost,
+    soldWasteRevenueTotal,
+    receivablePaidTotal,
+  ]);
 
   const financialByBudgetRows = useMemo(
     () =>
@@ -900,7 +674,8 @@ const LogisticsPage = () => {
           id: item.id,
           label: buildClientChartLabel(item.clientName),
           generalCost: item.generalCost,
-          grossProfit: item.grossProfit,
+          linkedRevenue: item.linkedRevenue,
+          generalProfit: item.generalProfit,
         })),
     [financialRows],
   );
@@ -917,33 +692,21 @@ const LogisticsPage = () => {
           monthKey,
           month,
           generalCost: item.generalCost,
-          grossProfit: item.grossProfit,
-          netProfit: item.netProfit,
+          linkedRevenue: item.linkedRevenue,
+          generalProfit: item.generalProfit,
         });
         return;
       }
 
       current.generalCost += item.generalCost;
-      current.grossProfit += item.grossProfit;
-      current.netProfit += item.netProfit;
+      current.linkedRevenue += item.linkedRevenue;
+      current.generalProfit += item.generalProfit;
     });
 
     return Array.from(map.values()).sort((a, b) =>
       a.monthKey.localeCompare(b.monthKey),
     );
   }, [financialRows]);
-
-  const sortedMaterialUsageRows = useMemo(
-    () =>
-      [...materialUsageRows].sort((a, b) => {
-        if (b.totalQuantity !== a.totalQuantity) {
-          return b.totalQuantity - a.totalQuantity;
-        }
-
-        return b.productionsCount - a.productionsCount;
-      }),
-    [materialUsageRows],
-  );
 
   const productionColumns = [
     { key: "clientName", header: "Cliente" },
@@ -985,133 +748,9 @@ const LogisticsPage = () => {
     { key: "installationTeam", header: "Equipe" },
   ];
 
-  const materialColumns = [
-    { key: "material", header: "Material" },
-    {
-      key: "totalQuantity",
-      header: "Quantidade Total",
-      mono: true,
-      render: (item: MaterialUsageRow) => `${item.totalQuantity} ${item.unit}`,
-    },
-    { key: "productionsCount", header: "Produções Ativas", mono: true },
-  ];
-
   const activeEmployeesLabel =
     activeEmployeesCount === null ? "N/D" : activeEmployeesCount;
 
-  const closingColumns = [
-    {
-      key: "referenceMonth",
-      header: "Mes",
-      render: (item: LogisticsMonthlyClosing) =>
-        formatReferenceMonth(item.referenceMonth),
-    },
-    {
-      key: "custoGeralAtivo",
-      header: "Custo Geral Ativo",
-      mono: true,
-      render: (item: LogisticsMonthlyClosing) =>
-        formatCurrency(item.custoGeralAtivo),
-    },
-    {
-      key: "receitaVinculada",
-      header: "Receita Vinculada",
-      mono: true,
-      render: (item: LogisticsMonthlyClosing) =>
-        formatCurrency(item.receitaVinculada),
-    },
-    {
-      key: "lucroLiquido",
-      header: "Lucro Liquido",
-      mono: true,
-      render: (item: LogisticsMonthlyClosing) =>
-        formatCurrency(item.lucroLiquido),
-    },
-    {
-      key: "lucroBruto",
-      header: "Lucro Bruto",
-      mono: true,
-      render: (item: LogisticsMonthlyClosing) =>
-        formatCurrency(item.lucroBruto),
-    },
-    {
-      key: "custosAplicadosPreAprovados",
-      header: "Custos Aplicados (Pre-aprovados)",
-      mono: true,
-      render: (item: LogisticsMonthlyClosing) =>
-        formatCurrency(item.custosAplicadosPreAprovados),
-    },
-    {
-      key: "updatedAt",
-      header: "Atualizado em",
-      render: (item: LogisticsMonthlyClosing) => formatDateTime(item.updatedAt),
-      mono: true,
-    },
-  ];
-
-  const handleMonthlyClosing = async () => {
-    if (!canViewFinancials) {
-      return;
-    }
-
-    if (!isFullMonthDateFilter) {
-      toast({
-        variant: "destructive",
-        title: "Periodo invalido para fechamento",
-        description:
-          "Para fechar o mês, filtre exatamente do primeiro ao último dia do mesmo mês.",
-      });
-      return;
-    }
-
-    if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
-      toast({
-        variant: "destructive",
-        title: "Mes de referencia invalido",
-        description: "Informe o mes no formato YYYY-MM.",
-      });
-      return;
-    }
-
-    const shouldSave = window.confirm(
-      `Deseja salvar o fechamento mensal de ${formatReferenceMonth(referenceMonth)}?`,
-    );
-
-    if (!shouldSave) {
-      return;
-    }
-
-    setIsSavingClosing(true);
-
-    try {
-      await upsertLogisticsMonthlyClosing({
-        referenceMonth,
-        custoGeralAtivo: financialTotals.generalCost,
-        receitaVinculada: financialTotals.linkedRevenue,
-        lucroLiquido: financialTotals.netProfit,
-        lucroBruto: financialTotals.grossProfit,
-        custosAplicadosPreAprovados: preApprovedAppliedCostsTotal,
-      });
-
-      toast({
-        title: "Fechamento mensal salvo",
-        description: "Fechamento mensal salvo com sucesso.",
-      });
-
-      await loadMonthlyClosings(closingFilterMonth);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Nao foi possivel salvar",
-        description: getErrorMessage(
-          error,
-          "Nao foi possivel salvar o fechamento mensal.",
-        ),
-      });
-    } finally {
-      setIsSavingClosing(false);
-    }
-  };
 
   return (
     <DashboardLayout title="Logística" subtitle="Entregas e Instalação">
@@ -1139,40 +778,12 @@ const LogisticsPage = () => {
             >
               Limpar filtro de data
             </button>
-
-            {canViewFinancials && (
-              <>
-                <FormField
-                  label="Mes de referencia"
-                  type="month"
-                  value={referenceMonth}
-                  onChange={(event) => setReferenceMonth(event.target.value)}
-                />
-
-                <button
-                  onClick={() => void handleMonthlyClosing()}
-                  disabled={isSavingClosing || !isFullMonthDateFilter}
-                  className="h-10 px-3 py-2 text-xs font-bold rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSavingClosing
-                    ? "Salvando fechamento..."
-                    : "Fechamento Mensal"}
-                </button>
-              </>
-            )}
           </div>
 
           {hasInvalidDateRange ? (
             <p className="mt-2 text-xs text-destructive">
               O período informado é inválido. A data inicial não pode ser maior
               que a data final.
-            </p>
-          ) : canViewFinancials &&
-            (filterDateStart || filterDateEnd) &&
-            !isFullMonthDateFilter ? (
-            <p className="mt-2 text-xs text-destructive">
-              Para liberar o fechamento mensal, use data inicial no primeiro dia
-              e data final no último dia do mesmo mês.
             </p>
           ) : filterDateStart || filterDateEnd ? (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -1185,12 +796,6 @@ const LogisticsPage = () => {
         {secondaryWarning && (
           <div className="border border-amber-300/40 bg-amber-50/70 rounded px-3 py-2 text-sm text-amber-900">
             {secondaryWarning}
-          </div>
-        )}
-
-        {financialCoverageWarning && (
-          <div className="border border-amber-300/40 bg-amber-50/70 rounded px-3 py-2 text-sm text-amber-900">
-            {financialCoverageWarning}
           </div>
         )}
 
@@ -1238,26 +843,20 @@ const LogisticsPage = () => {
             title="Custo Geral Ativo"
             value={formatCurrency(financialTotals.generalCost)}
             icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Inclui orçamentos aprovados e pedidos de compra não cancelados"
+            subtitle="Materiais + aplicáveis + despesas dos aprovados + pedidos de compra"
           />
           <StatCard
             title="Receita Vinculada"
             value={formatCurrency(financialTotals.linkedRevenue)}
             icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Inclui receita de orçamentos e resíduos vendidos"
+            subtitle="Orçamentos aprovados + resíduos vendidos + contas recebidas"
           />
           <StatCard
-            title="Lucro Bruto"
-            value={formatCurrency(financialTotals.grossProfit)}
+            title="Lucro Geral"
+            value={formatCurrency(financialTotals.generalProfit)}
             icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Lucro sem descontar custos aplicáveis"
-            highlight={financialTotals.grossProfit < 0}
-          />
-          <StatCard
-            title="Lucro Líquido"
-            value={formatCurrency(financialTotals.netProfit)}
-            icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Lucro bruto - custos aplicáveis"
+            subtitle="Receita vinculada - custo geral ativo"
+            highlight={financialTotals.generalProfit < 0}
           />
 
         </div>
@@ -1266,11 +865,11 @@ const LogisticsPage = () => {
           <Card>
             <CardHeader className="pb-0">
               <CardTitle className="text-sm">
-                Gastos x Lucro por Orçamento Aprovado
+                Custos x Receita por Orçamento Aprovado
               </CardTitle>
               <CardDescription>
-                Comparativo dos primeiros 8 orçamentos aprovados com margem de
-                lucro retornada pelo banco.
+                Comparativo dos primeiros 8 orçamentos aprovados com custo,
+                receita e lucro geral.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
@@ -1310,16 +909,20 @@ const LogisticsPage = () => {
                       radius={[4, 4, 0, 0]}
                     />
                     <Bar
-                      dataKey="grossProfit"
-                      fill="var(--color-grossProfit)"
+                      dataKey="linkedRevenue"
+                      fill="var(--color-linkedRevenue)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="generalProfit"
+                      fill="var(--color-generalProfit)"
                       radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
                 </ChartContainer>
               ) : (
                 <p className="text-sm text-muted-foreground py-6">
-                  Sem orçamentos aprovados com margem para montar o gráfico
-                  comparativo.
+                  Sem orçamentos aprovados para montar o gráfico comparativo.
                 </p>
               )}
             </CardContent>
@@ -1328,11 +931,11 @@ const LogisticsPage = () => {
           <Card>
             <CardHeader className="pb-0">
               <CardTitle className="text-sm">
-                Evolução de Gastos e Lucro (Aprovados)
+                Evolução de Custos, Receita e Lucro Geral
               </CardTitle>
               <CardDescription>
-                Valores por mês de aprovação, considerando margem de lucro de
-                cada orçamento.
+                Valores por mês de aprovação, considerando receita vinculada e
+                custo geral ativo.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
@@ -1374,15 +977,15 @@ const LogisticsPage = () => {
                     />
                     <Line
                       type="monotone"
-                      dataKey="grossProfit"
-                      stroke="var(--color-grossProfit)"
+                      dataKey="linkedRevenue"
+                      stroke="var(--color-linkedRevenue)"
                       strokeWidth={2}
                       dot={false}
                     />
                     <Line
                       type="monotone"
-                      dataKey="netProfit"
-                      stroke="var(--color-netProfit)"
+                      dataKey="generalProfit"
+                      stroke="var(--color-generalProfit)"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -1396,21 +999,6 @@ const LogisticsPage = () => {
               )}
             </CardContent>
           </Card>
-        </div>
-
-        <div>
-          <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
-            Materiais Mais Usados (Produções Ativas)
-          </h2>
-          <DataTable
-            columns={materialColumns}
-            data={sortedMaterialUsageRows}
-            emptyMessage={
-              isLoading
-                ? "Carregando uso de materiais..."
-                : "Sem produções ativas para calcular consumo de materiais."
-            }
-          />
         </div>
 
         <div>
@@ -1471,37 +1059,6 @@ const LogisticsPage = () => {
           </div>
         </div>
 
-        {canViewFinancials && (
-          <div>
-            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <FormField
-                label="Filtrar fechamento por mes"
-                type="month"
-                value={closingFilterMonth}
-                onChange={(event) => setClosingFilterMonth(event.target.value)}
-              />
-              <button
-                onClick={() => setClosingFilterMonth("")}
-                className="h-10 px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground"
-              >
-                Limpar filtro de fechamento
-              </button>
-            </div>
-
-            <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-bold mb-4">
-              Historico de Fechamentos Mensais
-            </h2>
-            <DataTable
-              columns={closingColumns}
-              data={monthlyClosings}
-              emptyMessage={
-                isLoadingClosings
-                  ? "Carregando fechamentos..."
-                  : "Nenhum fechamento mensal encontrado."
-              }
-            />
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

@@ -10,8 +10,8 @@ import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
-import { listBudgets } from "@/services/budgets";
-import { getPaperboardConfig } from "@/services/paperboard";
+import { getBudgetById, listBudgets, type Budget } from "@/services/budgets";
+import { getPaperboardConfig, type PaperboardConfig } from "@/services/paperboard";
 import {
   ApprovedBudgetForProduction,
   AdvanceProductionStatusInput,
@@ -297,12 +297,31 @@ const ProductionPage = () => {
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [imagesError, setImagesError] = useState("");
-  const [selectedBudgetQuantity, setSelectedBudgetQuantity] = useState(1);
+  const [selectedBudgetPaperboard, setSelectedBudgetPaperboard] = useState<
+    PaperboardConfig | null
+  >(null);
+  const [selectedBudgetDetail, setSelectedBudgetDetail] = useState<
+    Budget | null
+  >(null);
   const completionInFlightRef = useRef<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  const normalizeMarginPercentage = (value: unknown) => {
+    const numeric = Number(value);
+
+    if (!Number.isFinite(numeric)) {
+      return 0;
+    }
+
+    if (numeric <= 1) {
+      return Math.max(0, numeric * 100);
+    }
+
+    return Math.max(0, numeric);
+  };
 
   const normalizeDateOnly = (value: string | null | undefined) => {
     if (!value || typeof value !== "string") {
@@ -578,6 +597,94 @@ const ProductionPage = () => {
 
   useEffect(() => {
     if (!selectedApprovedBudget) {
+      setSelectedBudgetDetail(null);
+      return;
+    }
+
+    let isActive = true;
+    setSelectedBudgetDetail(null);
+
+    const loadBudgetDetail = async () => {
+      try {
+        const detail = await getBudgetById(selectedApprovedBudget.id);
+        if (isActive) {
+          setSelectedBudgetDetail(detail);
+        }
+      } catch {
+        if (isActive) {
+          setSelectedBudgetDetail(null);
+        }
+      }
+    };
+
+    void loadBudgetDetail();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedApprovedBudget?.id]);
+
+  const selectedBudgetTotals = useMemo(() => {
+    if (!selectedApprovedBudget) {
+      return null;
+    }
+
+    const materialsBaseTotal = (selectedBudgetDetail?.materials || []).reduce(
+      (sum, material) =>
+        sum + (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
+      0,
+    );
+    const claBaseTotal = selectedBudgetPaperboard
+      ? Math.max(0, Number(selectedBudgetPaperboard.suggestedPrice) || 0) *
+        Math.max(1, Number(selectedBudgetPaperboard.quantity) || 1)
+      : 0;
+    const baseTotal = materialsBaseTotal > 0 ? materialsBaseTotal : claBaseTotal;
+    const marginPercentage = normalizeMarginPercentage(
+      selectedBudgetDetail?.profitMarginPercentage ??
+        selectedBudgetDetail?.profitMargin ??
+        selectedApprovedBudget.profitMarginPercentage ??
+        selectedApprovedBudget.profitMargin ??
+        0,
+    );
+    const applicableCostFromDetail = Math.max(
+      0,
+      Number(
+        selectedBudgetDetail?.financialSummary?.costsApplicableValue ??
+          selectedBudgetDetail?.costsApplicableValue ??
+          0,
+      ) || 0,
+    );
+    const applicableCost =
+      applicableCostFromDetail > 0
+        ? applicableCostFromDetail
+        : resolveBudgetApplicableCost(selectedApprovedBudget);
+
+    if (baseTotal > 0) {
+      const profit = baseTotal * (marginPercentage / 100);
+      const finalPrice = baseTotal + profit;
+
+      return {
+        totalCost: baseTotal,
+        applicableCost,
+        profit,
+        finalPrice,
+      };
+    }
+
+    return {
+      totalCost: resolveBudgetTotalCost(selectedApprovedBudget),
+      applicableCost,
+      profit: resolveBudgetProfit(selectedApprovedBudget),
+      finalPrice: resolveBudgetFinalPrice(selectedApprovedBudget),
+    };
+  }, [
+    selectedApprovedBudget,
+    selectedBudgetDetail,
+    selectedBudgetPaperboard,
+  ]);
+
+  useEffect(() => {
+    if (!selectedApprovedBudget) {
       return;
     }
 
@@ -587,57 +694,38 @@ const ProductionPage = () => {
       }
 
       const updatedInitialCost =
-        resolveBudgetTotalCost(selectedApprovedBudget) *
-        Math.max(1, selectedBudgetQuantity);
+        selectedBudgetTotals?.totalCost ??
+        resolveBudgetTotalCost(selectedApprovedBudget);
 
       return {
         ...current,
         initialCost: updatedInitialCost,
       };
     });
-  }, [selectedApprovedBudget, selectedBudgetQuantity]);
-
-  const selectedBudgetTotals = useMemo(() => {
-    if (!selectedApprovedBudget) {
-      return null;
-    }
-
-    const multiplier = Math.max(1, selectedBudgetQuantity);
-
-    return {
-      totalCost: resolveBudgetTotalCost(selectedApprovedBudget) * multiplier,
-      applicableCost:
-        resolveBudgetApplicableCost(selectedApprovedBudget) * multiplier,
-      profit: resolveBudgetProfit(selectedApprovedBudget) * multiplier,
-      finalPrice: resolveBudgetFinalPrice(selectedApprovedBudget) * multiplier,
-    };
-  }, [selectedApprovedBudget, selectedBudgetQuantity]);
+  }, [selectedApprovedBudget, selectedBudgetTotals]);
 
   useEffect(() => {
     if (!selectedApprovedBudget) {
-      setSelectedBudgetQuantity(1);
+      setSelectedBudgetPaperboard(null);
       return;
     }
 
     if (selectedApprovedBudget.category !== "arquitetonico") {
-      setSelectedBudgetQuantity(1);
+      setSelectedBudgetPaperboard(null);
       return;
     }
 
     let isActive = true;
-    setSelectedBudgetQuantity(1);
-
     const loadQuantity = async () => {
       try {
         const config = await getPaperboardConfig(selectedApprovedBudget.id);
         if (!isActive) {
           return;
         }
-        const quantity = Math.max(1, Number(config.quantity) || 1);
-        setSelectedBudgetQuantity(quantity);
+        setSelectedBudgetPaperboard(config);
       } catch {
         if (isActive) {
-          setSelectedBudgetQuantity(1);
+          setSelectedBudgetPaperboard(null);
         }
       }
     };
@@ -670,8 +758,8 @@ const ProductionPage = () => {
       clientId: linkedClient?.id || current.clientId,
       description: selectedBudget.description || current.description,
       initialCost:
-        resolveBudgetTotalCost(selectedBudget) *
-        Math.max(1, selectedBudgetQuantity),
+        selectedBudgetTotals?.totalCost ??
+        resolveBudgetTotalCost(selectedBudget),
     }));
 
     setFormError("");
