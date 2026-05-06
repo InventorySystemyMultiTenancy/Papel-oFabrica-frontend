@@ -28,9 +28,9 @@ interface NavItem {
 
 const navItems = [
   {
-    title: "Painel",
-    url: "/overview",
-    icon: LayoutDashboard,
+    title: "Logística",
+    url: "/logistics",
+    icon: Truck,
     allowedRoles: ["admin", "gerente", "funcionario"],
   },
   {
@@ -61,12 +61,6 @@ const navItems = [
     title: "Produção (Pedidos)",
     url: "/production",
     icon: Hammer,
-    allowedRoles: ["admin", "gerente", "funcionario"],
-  },
-  {
-    title: "Logística",
-    url: "/logistics",
-    icon: Truck,
     allowedRoles: ["admin", "gerente", "funcionario"],
   },
   {

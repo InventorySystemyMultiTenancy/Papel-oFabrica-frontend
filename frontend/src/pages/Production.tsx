@@ -345,39 +345,23 @@ const ProductionPage = () => {
   };
 
   const resolveBudgetTotalCost = (budget: Budget) => {
-    const apiTotalCost = Number(budget.totalCost);
-
-    if (Number.isFinite(apiTotalCost) && apiTotalCost > 0) {
-      return Math.max(0, apiTotalCost);
-    }
-
-    const materialCost = (budget.materials || []).reduce(
-      (sum, material) =>
-        sum +
-        (Number(material.unitPrice) || 0) * (Number(material.quantity) || 0),
+    // Custo = soma dos R$ Unid (preço unitário) de cada material
+    return (budget.materials || []).reduce(
+      (sum, material) => sum + (Number(material.unitPrice) || 0),
       0,
-    );
-    const departmentsCost = (budget.expenseDepartments || []).reduce(
-      (sum, department) => sum + (Number(department.amount) || 0),
-      0,
-    );
-    const laborCost = Math.max(0, Number(budget.laborCost) || 0);
-    const applicableCost = resolveBudgetApplicableCost(budget);
-
-    return Math.max(
-      0,
-      materialCost + departmentsCost + laborCost + applicableCost,
     );
   };
 
   const resolveBudgetProfit = (budget: Budget) => {
-    const apiProfitValue = Number(budget.profitValue);
-
-    if (Number.isFinite(apiProfitValue)) {
-      return apiProfitValue;
-    }
-
-    return (Number(budget.totalPrice) || 0) - resolveBudgetTotalCost(budget);
+    // Lucro = soma de R$ TOTAL (qtd × R$ Unid) - soma de R$ Unid
+    const sumTotal = (budget.materials || []).reduce(
+      (sum, material) =>
+        sum +
+        (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
+      0,
+    );
+    const sumUnid = resolveBudgetTotalCost(budget);
+    return sumTotal - sumUnid;
   };
 
   const loadProductions = async () => {

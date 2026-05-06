@@ -709,32 +709,20 @@ const LogisticsPage = () => {
     const rows: FinancialBudgetRow[] = [];
 
     approvedBudgets.forEach((budget) => {
-      const margin =
-        typeof budget.profitMargin === "number"
-          ? normalizeMarginValue(budget.profitMargin)
-          : null;
+      // Custo = soma dos R$ Unid (unitPrice) de cada material
+      const generalCost = (budget.materials || []).reduce(
+        (sum, material) => sum + (Number(material.unitPrice) || 0),
+        0,
+      );
 
-      const totalPrice = Math.max(0, Number(budget.totalPrice) || 0);
-      const totalCostFromApi =
-        typeof budget.totalCost === "number" &&
-        Number.isFinite(budget.totalCost)
-          ? Math.max(0, Number(budget.totalCost))
-          : null;
-
-      const generalCost =
-        totalCostFromApi ??
-        (margin !== null && margin > -1
-          ? Math.max(0, totalPrice / (1 + margin))
-          : totalPrice);
-
-      const profitFromApi =
-        typeof budget.profitValue === "number" &&
-        Number.isFinite(budget.profitValue)
-          ? Number(budget.profitValue)
-          : null;
-
-      const grossProfit =
-        profitFromApi ?? Math.max(0, totalPrice - generalCost);
+      // Lucro = soma de R$ TOTAL (qty × unitPrice) - soma de R$ Unid
+      const sumTotal = (budget.materials || []).reduce(
+        (sum, material) =>
+          sum +
+          (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
+        0,
+      );
+      const grossProfit = sumTotal - generalCost;
       const linkedRevenue = generalCost + grossProfit;
 
       const applicableCostFromSummary = Number(
@@ -1174,12 +1162,7 @@ const LogisticsPage = () => {
             icon={<DollarSign className="h-4 w-4" />}
             subtitle="Lucro bruto - custos aplicáveis"
           />
-          <StatCard
-            title="Custos Aplicados (Pré-aprovados)"
-            value={formatCurrency(preApprovedAppliedCostsTotal)}
-            icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Custos aplicados de orçamentos pré-aprovados"
-          />
+
         </div>
 
         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">

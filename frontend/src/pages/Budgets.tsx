@@ -3618,11 +3618,6 @@ const BudgetsPage = () => {
       render: (b: BudgetRow) => formatCurrency(b.costsAppliedValue),
     },
     {
-      key: "remainingCostToApply",
-      header: "Custo restante",
-      render: (b: BudgetRow) => formatCurrency(b.remainingCostToApply),
-    },
-    {
       key: "finalPrice",
       header: "Preço Final",
       mono: true,
