@@ -797,21 +797,26 @@ const LogisticsPage = () => {
     const rows: FinancialBudgetRow[] = [];
 
     approvedBudgets.forEach((budget) => {
-      // Custo = soma dos R$ Unid (unitPrice) de cada material
-      const generalCost = (budget.materials || []).reduce(
-        (sum, material) => sum + (Number(material.unitPrice) || 0),
-        0,
-      );
-
-      // Lucro = soma de R$ TOTAL (qty × unitPrice) - soma de R$ Unid
-      const sumTotal = (budget.materials || []).reduce(
+      const materialTotal = (budget.materials || []).reduce(
         (sum, material) =>
           sum +
           (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
         0,
       );
-      const grossProfit = sumTotal - generalCost;
-      const linkedRevenue = generalCost + grossProfit;
+      const totalCostFromApi = Number(budget.totalCost);
+      const generalCost = Number.isFinite(totalCostFromApi) && totalCostFromApi > 0
+        ? totalCostFromApi
+        : materialTotal;
+      const finalPriceFromApi = Number(budget.finalPrice ?? budget.totalPrice);
+      const linkedRevenue =
+        Number.isFinite(finalPriceFromApi) && finalPriceFromApi > 0
+          ? finalPriceFromApi
+          : materialTotal;
+      const profitFromApi = Number(budget.profitValue);
+      const grossProfit =
+        Number.isFinite(profitFromApi)
+          ? profitFromApi
+          : linkedRevenue - generalCost;
 
       const applicableCostFromSummary = Number(
         budget.financialSummary?.costsApplicableValue ??

@@ -11,6 +11,7 @@ import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
 import { listBudgets } from "@/services/budgets";
+import { getPaperboardConfig } from "@/services/paperboard";
 import {
   ApprovedBudgetForProduction,
   AdvanceProductionStatusInput,
@@ -296,6 +297,7 @@ const ProductionPage = () => {
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [imagesError, setImagesError] = useState("");
+  const [selectedBudgetQuantity, setSelectedBudgetQuantity] = useState(1);
   const completionInFlightRef = useRef<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -574,6 +576,79 @@ const ProductionPage = () => {
     [approvedBudgetsCatalog, form.budgetId],
   );
 
+  useEffect(() => {
+    if (!selectedApprovedBudget) {
+      return;
+    }
+
+    setForm((current) => {
+      if (current.budgetId !== selectedApprovedBudget.id) {
+        return current;
+      }
+
+      const updatedInitialCost =
+        resolveBudgetTotalCost(selectedApprovedBudget) *
+        Math.max(1, selectedBudgetQuantity);
+
+      return {
+        ...current,
+        initialCost: updatedInitialCost,
+      };
+    });
+  }, [selectedApprovedBudget, selectedBudgetQuantity]);
+
+  const selectedBudgetTotals = useMemo(() => {
+    if (!selectedApprovedBudget) {
+      return null;
+    }
+
+    const multiplier = Math.max(1, selectedBudgetQuantity);
+
+    return {
+      totalCost: resolveBudgetTotalCost(selectedApprovedBudget) * multiplier,
+      applicableCost:
+        resolveBudgetApplicableCost(selectedApprovedBudget) * multiplier,
+      profit: resolveBudgetProfit(selectedApprovedBudget) * multiplier,
+      finalPrice: resolveBudgetFinalPrice(selectedApprovedBudget) * multiplier,
+    };
+  }, [selectedApprovedBudget, selectedBudgetQuantity]);
+
+  useEffect(() => {
+    if (!selectedApprovedBudget) {
+      setSelectedBudgetQuantity(1);
+      return;
+    }
+
+    if (selectedApprovedBudget.category !== "arquitetonico") {
+      setSelectedBudgetQuantity(1);
+      return;
+    }
+
+    let isActive = true;
+    setSelectedBudgetQuantity(1);
+
+    const loadQuantity = async () => {
+      try {
+        const config = await getPaperboardConfig(selectedApprovedBudget.id);
+        if (!isActive) {
+          return;
+        }
+        const quantity = Math.max(1, Number(config.quantity) || 1);
+        setSelectedBudgetQuantity(quantity);
+      } catch {
+        if (isActive) {
+          setSelectedBudgetQuantity(1);
+        }
+      }
+    };
+
+    void loadQuantity();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedApprovedBudget?.id, selectedApprovedBudget?.category]);
+
   const applyApprovedBudgetToForm = (budgetId: string) => {
     const selectedBudget = approvedBudgetsCatalog.find(
       (budget) => budget.id === budgetId,
@@ -594,7 +669,9 @@ const ProductionPage = () => {
       budgetId,
       clientId: linkedClient?.id || current.clientId,
       description: selectedBudget.description || current.description,
-      initialCost: resolveBudgetTotalCost(selectedBudget),
+      initialCost:
+        resolveBudgetTotalCost(selectedBudget) *
+        Math.max(1, selectedBudgetQuantity),
     }));
 
     setFormError("");
@@ -1544,7 +1621,7 @@ const ProductionPage = () => {
                 </p>
               )}
 
-              {selectedApprovedBudget && (
+              {selectedApprovedBudget && selectedBudgetTotals && (
                 <div className="border border-border rounded p-4 bg-secondary/20">
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
                     Resumo financeiro do orcamento selecionado
@@ -1553,33 +1630,25 @@ const ProductionPage = () => {
                     <div>
                       <p className="text-muted-foreground">Custo total</p>
                       <p className="font-mono font-bold text-foreground">
-                        {formatCurrency(
-                          resolveBudgetTotalCost(selectedApprovedBudget),
-                        )}
+                        {formatCurrency(selectedBudgetTotals.totalCost)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Custos aplicaveis</p>
                       <p className="font-mono font-bold text-foreground">
-                        {formatCurrency(
-                          resolveBudgetApplicableCost(selectedApprovedBudget),
-                        )}
+                        {formatCurrency(selectedBudgetTotals.applicableCost)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Lucro</p>
                       <p className="font-mono font-bold text-foreground">
-                        {formatCurrency(
-                          resolveBudgetProfit(selectedApprovedBudget),
-                        )}
+                        {formatCurrency(selectedBudgetTotals.profit)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Preco final</p>
                       <p className="font-mono font-bold text-primary">
-                        {formatCurrency(
-                          resolveBudgetFinalPrice(selectedApprovedBudget),
-                        )}
+                        {formatCurrency(selectedBudgetTotals.finalPrice)}
                       </p>
                     </div>
                   </div>

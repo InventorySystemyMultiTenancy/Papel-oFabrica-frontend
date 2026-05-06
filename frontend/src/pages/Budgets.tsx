@@ -2947,7 +2947,7 @@ const BudgetsPage = () => {
       (sum, item) => sum + item.quantity * item.unitPrice,
       0,
     );
-    const marginPercentage = Number(budget.profitMargin) || 0;
+    const marginPercentage = normalizeMarginPercentage(budget.profitMargin);
     const fallbackFinalPrice =
       itemsBaseTotal > 0
         ? itemsBaseTotal * (1 + marginPercentage / 100)
@@ -3241,11 +3241,12 @@ const BudgetsPage = () => {
         }
       }
 
+      const marginPercentage = normalizeMarginPercentage(budget.profitMargin);
       const marginAppliedTotal = Math.max(
         0,
-        Number(budget.finalPrice) > 0
-          ? Number(budget.finalPrice)
-          : tableTotal * (1 + (Number(budget.profitMargin) || 0) / 100),
+        tableTotal > 0
+          ? tableTotal * (1 + marginPercentage / 100)
+          : Number(budget.finalPrice) || 0,
       );
 
       // Célula "Total R$"
