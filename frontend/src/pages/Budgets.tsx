@@ -778,7 +778,7 @@ const mapBudgetFromApi = (
   const applicableCostsCost = costsApplicableValue;
   const apiTotalCost = Number(budget.totalCost);
   const apiLaborCost = Number(budget.laborCost);
-  const finalPrice = Number(budget.finalPrice ?? budget.totalPrice) || 0;
+  const apiFinalPrice = Number(budget.finalPrice ?? budget.totalPrice) || 0;
   const laborCost = Number.isFinite(apiLaborCost)
     ? Math.max(0, apiLaborCost)
     : Math.max(
@@ -799,9 +799,13 @@ const mapBudgetFromApi = (
       Number.isFinite(Number(budget.profitMargin))
         ? budget.profitMargin
         : totalCost > 0
-          ? (finalPrice - totalCost) / totalCost
+          ? (apiFinalPrice - totalCost) / totalCost
           : 0,
     );
+  const finalPrice =
+    materialCost > 0
+      ? Math.max(0, materialCost * (1 + profitMargin / 100))
+      : Math.max(0, apiFinalPrice);
 
   const linkedClient = findClientByName(clientsCatalog, budget.clientName);
   const costsAppliedAt =
@@ -2939,6 +2943,21 @@ const BudgetsPage = () => {
     const linkedClient =
       clientsCatalog.find((client) => client.id === budget.clientId) ||
       findClientByName(clientsCatalog, budget.clientName);
+    const itemsBaseTotal = budget.items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
+      0,
+    );
+    const marginPercentage = Number(budget.profitMargin) || 0;
+    const fallbackFinalPrice =
+      itemsBaseTotal > 0
+        ? itemsBaseTotal * (1 + marginPercentage / 100)
+        : Number(budget.finalPrice) || 0;
+    const contractValue = Math.max(
+      0,
+      Number(budget.finalPrice) > 0
+        ? Number(budget.finalPrice)
+        : fallbackFinalPrice,
+    );
 
     setSelectedBudgetForContract(budget);
     setContractFormError("");
@@ -2948,7 +2967,7 @@ const BudgetsPage = () => {
       projectAddress: buildClientAddress(linkedClient),
       kioskWidthMeters: 3,
       kioskDepthMeters: 4,
-      contractValue: Number(budget.finalPrice.toFixed(2)),
+      contractValue: Number(contractValue.toFixed(2)),
       signatureCity: "São Paulo",
       signatureDate: getTodayInputDate(),
       clauses: createDefaultContractClauses(),
@@ -3222,6 +3241,13 @@ const BudgetsPage = () => {
         }
       }
 
+      const marginAppliedTotal = Math.max(
+        0,
+        Number(budget.finalPrice) > 0
+          ? Number(budget.finalPrice)
+          : tableTotal * (1 + (Number(budget.profitMargin) || 0) / 100),
+      );
+
       // Célula "Total R$"
       ensureSpace(8);
       const totalBoxX = totX - 14;
@@ -3235,7 +3261,9 @@ const BudgetsPage = () => {
       pdf.setTextColor(26, 26, 26);
       pdf.text("Total R$", totalBoxX + 2, y + 5.5);
       pdf.text(
-        tableTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        marginAppliedTotal.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+        }),
         totalBoxX + totalBoxW - 2,
         y + 5.5,
         { align: "right" },
@@ -3275,7 +3303,7 @@ const BudgetsPage = () => {
       totalRow("Valor do Frete:", "");
       totalRow(
         "Valor Total:",
-        tableTotal.toLocaleString("pt-BR", {
+        marginAppliedTotal.toLocaleString("pt-BR", {
           style: "currency",
           currency: "BRL",
         }),

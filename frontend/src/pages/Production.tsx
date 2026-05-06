@@ -10,6 +10,7 @@ import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
+import { listBudgets } from "@/services/budgets";
 import {
   ApprovedBudgetForProduction,
   AdvanceProductionStatusInput,
@@ -485,14 +486,36 @@ const ProductionPage = () => {
       const budgets = await listApprovedBudgetsForProduction();
       setApprovedBudgetsCatalog(budgets);
     } catch (error) {
-      setApprovedBudgetsCatalog([]);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Falha ao carregar orcamentos aprovados.";
-      setBudgetsError(
-        `Nao foi possivel carregar orcamentos aprovados: ${message}`,
-      );
+      try {
+        const legacyBudgets = await listBudgets();
+        const approvedFromLegacy = legacyBudgets
+          .filter((budget) => budget.status === "approved")
+          .map<ApprovedBudgetForProduction>((budget) => ({
+            id: budget.id,
+            clientName: budget.clientName,
+            description: budget.description,
+            category: budget.category,
+            totalCost: budget.totalCost,
+            costsApplicableValue: budget.costsApplicableValue,
+            profitValue: budget.profitValue,
+            profitMargin: budget.profitMargin,
+            profitMarginPercentage: budget.profitMarginPercentage,
+            finalPrice: budget.finalPrice ?? budget.totalPrice,
+            totalPrice: budget.totalPrice,
+          }));
+
+        setApprovedBudgetsCatalog(approvedFromLegacy);
+        setBudgetsError("");
+      } catch (legacyError) {
+        setApprovedBudgetsCatalog([]);
+        const message =
+          legacyError instanceof Error
+            ? legacyError.message
+            : "Falha ao carregar orcamentos aprovados.";
+        setBudgetsError(
+          `Nao foi possivel carregar orcamentos aprovados: ${message}`,
+        );
+      }
     } finally {
       setIsLoadingBudgets(false);
     }
