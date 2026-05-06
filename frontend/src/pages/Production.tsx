@@ -352,16 +352,19 @@ const ProductionPage = () => {
     );
   };
 
-  const resolveBudgetProfit = (budget: Budget) => {
-    // Lucro = soma de R$ TOTAL (qtd × R$ Unid) - soma de R$ Unid
-    const sumTotal = (budget.materials || []).reduce(
+  const resolveBudgetFinalPrice = (budget: Budget) => {
+    // Preço final = soma de R$ TOTAL (qtd × R$ Unid) de cada material
+    return (budget.materials || []).reduce(
       (sum, material) =>
         sum +
         (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
       0,
     );
-    const sumUnid = resolveBudgetTotalCost(budget);
-    return sumTotal - sumUnid;
+  };
+
+  const resolveBudgetProfit = (budget: Budget) => {
+    // Lucro = Preço final - Custo total
+    return resolveBudgetFinalPrice(budget) - resolveBudgetTotalCost(budget);
   };
 
   const loadProductions = async () => {
@@ -1583,7 +1586,7 @@ const ProductionPage = () => {
                       <p className="text-muted-foreground">Preco final</p>
                       <p className="font-mono font-bold text-primary">
                         {formatCurrency(
-                          Number(selectedApprovedBudget.totalPrice) || 0,
+                          resolveBudgetFinalPrice(selectedApprovedBudget),
                         )}
                       </p>
                     </div>
