@@ -4305,19 +4305,6 @@ const BudgetsPage = () => {
                         }))
                       }
                     />
-                    <FormField
-                      label="Markup (%)"
-                      type="number"
-                      min={0}
-                      step="0.1"
-                      value={createClaForm.markupPercentage ?? 35}
-                      onChange={(e) =>
-                        setCreateClaForm((f) => ({
-                          ...f,
-                          markupPercentage: Number(e.target.value),
-                        }))
-                      }
-                    />
                   </div>
                   <div className="flex flex-wrap gap-4">
                     <label className="flex items-center gap-1.5 text-xs cursor-pointer">
@@ -4333,32 +4320,7 @@ const BudgetsPage = () => {
                       />
                       Primeira compra (inclui clichê)
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={createClaForm.usesFullSheet ?? false}
-                        onChange={(e) =>
-                          setCreateClaForm((f) => ({
-                            ...f,
-                            usesFullSheet: e.target.checked,
-                          }))
-                        }
-                      />
-                      Usa folha inteira
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={createClaForm.outsourcedCut ?? false}
-                        onChange={(e) =>
-                          setCreateClaForm((f) => ({
-                            ...f,
-                            outsourcedCut: e.target.checked,
-                          }))
-                        }
-                      />
-                      Corte terceirizado
-                    </label>
+                    
                   </div>
                   {createClaForm.isFirstPurchase && (
                     <div className="grid grid-cols-2 gap-3">
@@ -5414,19 +5376,6 @@ const BudgetsPage = () => {
                             setPaperboardForm((f) => ({
                               ...f,
                               lossPercentage: Number(e.target.value),
-                            }))
-                          }
-                        />
-                        <FormField
-                          label="Markup (%)"
-                          type="number"
-                          min={0}
-                          step="0.1"
-                          value={paperboardForm.markupPercentage ?? 35}
-                          onChange={(e) =>
-                            setPaperboardForm((f) => ({
-                              ...f,
-                              markupPercentage: Number(e.target.value),
                             }))
                           }
                         />
