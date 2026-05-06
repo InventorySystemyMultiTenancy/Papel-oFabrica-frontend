@@ -2623,6 +2623,9 @@ const BudgetsPage = () => {
     setDetailExpenseDepartmentsFieldErrors({});
     setDetailApplicableCostsFieldErrors({});
 
+    const totalPriceToPersist =
+      paperboardConfig?.suggestedPrice ?? detailFinalPriceWithExpenses;
+
     try {
       const updated = mapBudgetFromApi(
         await updateBudget(selectedBudget.id, {
@@ -2637,7 +2640,7 @@ const BudgetsPage = () => {
             ? detailForm.paymentTerms.trim()
             : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
           status: detailForm.status,
-          totalPrice: detailFinalPriceWithExpenses,
+          totalPrice: totalPriceToPersist,
           costsApplicableValue: Math.max(
             0,
             Number(detailForm.costsApplicableValue) || 0,
@@ -2818,171 +2821,289 @@ const BudgetsPage = () => {
   const generateBudgetPdf = async (budget: BudgetRow) => {
     setGeneratingPdfId(budget.id);
 
+    // ── Constantes da empresa (molde 4D EMBALAGENS) ──────────────────────────
+    const COMPANY_NAME = "4D EMBALAGENS LTDA";
+    const COMPANY_ADDRESS = "Rua Benedito Passos, 160 - Vila Matilde - SP";
+    const COMPANY_CNPJ = "CNPJ: 62.728.414/0001-99";
+    const COMPANY_TEL = "Tel: (11) 2651-4292 | Cel: (11) 95266-1751";
+    const COMPANY_CONTACT = "Daniel Visnardi";
+    const COMPANY_DEPT = "Dpto Comercial";
+    const COMPANY_CELL = "(11) 95266-1751";
+    const COMPANY_EMAIL = "daniel@4dembalagens.com.br";
+
     try {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const contentWidth = 154;
-      const marginX = (pageWidth - contentWidth) / 2;
-      const bottomLimit = pageHeight - 16;
-
+      const PW = pdf.internal.pageSize.getWidth(); // 210
+      const PH = pdf.internal.pageSize.getHeight(); // 297
+      const MX = 14; // margem horizontal
+      const CW = PW - MX * 2; // largura útil ≈ 182
+      const bottomLimit = PH - 14;
       let y = 12;
+
+      // ── 1. CABEÇALHO: logo + dados empresa ─────────────────────────────────
       const logoDataUrl = await loadLogoDataUrl();
+      const LOGO_W = 28;
+      const LOGO_H = 28;
       if (logoDataUrl) {
-        pdf.addImage(logoDataUrl, "PNG", marginX, y, 30, 30);
+        pdf.addImage(logoDataUrl, "PNG", MX, y, LOGO_W, LOGO_H);
       }
 
-      const headerX = logoDataUrl ? marginX + 36 : marginX;
+      // Dados empresa alinhados à direita
+      const compX = MX + LOGO_W + 4;
+      const compW = PW - compX - MX;
+      pdf.setTextColor(26, 26, 26);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.text(COMPANY_NAME, compX + compW, y + 5, { align: "right" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(85, 85, 85);
+      pdf.text(COMPANY_ADDRESS, compX + compW, y + 10, { align: "right" });
+      pdf.text(COMPANY_CNPJ, compX + compW, y + 15, { align: "right" });
+      pdf.text(COMPANY_TEL, compX + compW, y + 20, { align: "right" });
+
+      y += 34;
+
+      // ── 2. TÍTULO ────────────────────────────────────────────────────────────
       pdf.setTextColor(0, 0, 0);
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(15);
-      pdf.text("4D Papelao - Producao", headerX, y + 8);
+      pdf.setFontSize(16);
+      pdf.text("Orcamento", PW / 2, y, { align: "center" });
+      y += 10;
 
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9.8);
-      pdf.text("Rua Professor Athanassof, 28 Cid.Patriarca", headerX, y + 15);
-      pdf.text("CEP 03552-110 Sao Paulo - SP", headerX, y + 20);
+      // ── 3. CAIXA CLIENTE / PROPOSTA ──────────────────────────────────────────
+      const BOX_H = 26;
+      const HALF = CW / 2;
+      pdf.setFillColor(242, 242, 242);
+      pdf.rect(MX, y, CW, BOX_H, "FD");
+      pdf.setDrawColor(221, 221, 221);
+      pdf.setLineWidth(0.5);
+      pdf.line(MX + HALF, y, MX + HALF, y + BOX_H);
 
-      y += 36;
+      const fieldLine = (
+        label: string,
+        value: string,
+        fx: number,
+        fy: number,
+        fw: number,
+      ) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(0, 0, 0);
+        const labelW = pdf.getTextWidth(`${label}: `);
+        pdf.text(`${label}: `, fx, fy);
+        pdf.setFont("helvetica", "normal");
+        const maxW = fw - labelW;
+        const val = pdf.splitTextToSize(value || "", maxW) as string[];
+        pdf.text(val[0] ?? "", fx + labelW, fy);
+      };
 
-      const issueDate = normalizeDateOnly(budget.createdAt) || "-";
-      const proposalTitle = `Proposta comercial: ${budget.clientName}`;
-      const proposalSubtitle =
-        "Desenvolvimento e producao de embalagens de papelao conforme especificacoes aprovadas.";
+      const lX = MX + 3;
+      const rX = MX + HALF + 3;
+      const colW = HALF - 6;
+      let bY = y + 6;
+      fieldLine("Cliente", budget.clientName, lX, bY, colW);
+      bY += 5;
+      fieldLine("Responsavel", "", lX, bY, colW);
+      bY += 5;
+      fieldLine("E-mail", "", lX, bY, colW);
+      bY += 5;
+      fieldLine("Telefone", "", lX, bY, colW);
 
+      let rY = y + 6;
+      fieldLine(
+        "No da Proposta",
+        budget.id.slice(0, 8).toUpperCase(),
+        rX,
+        rY,
+        colW,
+      );
+      rY += 5;
+      fieldLine(
+        "Data da Entrega",
+        budget.deliveryDate
+          ? new Date(budget.deliveryDate).toLocaleDateString("pt-BR")
+          : "",
+        rX,
+        rY,
+        colW,
+      );
+      rY += 5;
+      if (budget.paymentTerms?.trim()) {
+        fieldLine("Pagamento", budget.paymentTerms.trim(), rX, rY, colW);
+        rY += 5;
+      }
+      if (budget.estimatedDeliveryBusinessDays) {
+        fieldLine(
+          "Prazo (d.u.)",
+          `${budget.estimatedDeliveryBusinessDays} dia(s)`,
+          rX,
+          rY,
+          colW,
+        );
+      }
+
+      y += BOX_H + 8;
+
+      // ── 4. TABELA DE PRODUTOS ────────────────────────────────────────────────
+      const ensureSpace = (need: number) => {
+        if (y + need > bottomLimit) {
+          pdf.addPage();
+          y = 14;
+        }
+      };
+
+      const descW = CW - 60;
+      const qtyX = MX + descW;
+      const unitX = qtyX + 20;
+      const totX = unitX + 20;
+      const numW = 20;
+
+      // Cabeçalho
+      ensureSpace(10);
+      pdf.setFillColor(242, 242, 242);
+      pdf.rect(MX, y, CW, 8, "FD");
+      pdf.setDrawColor(221, 221, 221);
+      pdf.rect(MX, y, CW, 8, "S");
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(9.5);
-      pdf.text(proposalTitle, marginX, y);
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(26, 26, 26);
+      pdf.text("Descricao dos Produtos", MX + 3, y + 5.5);
+      pdf.text("Qtd.", qtyX, y + 5.5, { align: "center" });
+      pdf.text("R$ Unid.", unitX + numW, y + 5.5, { align: "right" });
+      pdf.text("R$ TOTAL", totX + numW, y + 5.5, { align: "right" });
+      y += 8;
 
+      // Linhas dos produtos
+      budget.items.forEach((item, idx) => {
+        ensureSpace(8);
+        if (idx % 2 === 0) {
+          pdf.setFillColor(255, 255, 255);
+        } else {
+          pdf.setFillColor(242, 242, 242);
+        }
+        pdf.rect(MX, y, CW, 8, "FD");
+        pdf.setDrawColor(221, 221, 221);
+        pdf.rect(MX, y, CW, 8, "S");
+
+        const total = item.quantity * item.unitPrice;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.8);
+        pdf.setTextColor(0, 0, 0);
+        const descText = pdf.splitTextToSize(
+          item.productName,
+          descW - 6,
+        ) as string[];
+        pdf.text(descText[0] ?? "", MX + 3, y + 5.5);
+        pdf.text(String(item.quantity), qtyX, y + 5.5, { align: "center" });
+        pdf.text(
+          item.unitPrice.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          }),
+          unitX + numW,
+          y + 5.5,
+          { align: "right" },
+        );
+        pdf.text(
+          total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+          totX + numW,
+          y + 5.5,
+          { align: "right" },
+        );
+        y += 8;
+      });
+
+      // Célula "Total R$"
+      ensureSpace(8);
+      pdf.setFillColor(242, 242, 242);
+      pdf.rect(totX - 2, y, numW + 2, 8, "FD");
+      pdf.setDrawColor(221, 221, 221);
+      pdf.rect(totX - 2, y, numW + 2, 8, "S");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(26, 26, 26);
+      pdf.text("Total R$", totX + numW, y + 5.5, { align: "right" });
+      y += 8;
+
+      // ── 5. TOTAIS + DADOS ADICIONAIS ─────────────────────────────────────────
+      y += 8;
+      ensureSpace(30);
+      const totalsX = MX;
+      const totalsW = CW / 2 - 5;
+      const dadosX = MX + CW / 2 + 5;
+      const dadosW = CW / 2 - 5;
+      const totalsStartY = y;
+
+      // "Totais" sublinhado
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Totais", totalsX, y);
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.6);
+      pdf.line(totalsX, y + 1.5, totalsX + 22, y + 1.5);
+      y += 7;
+
+      const totalRow = (label: string, value: string) => {
+        ensureSpace(6);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8.5);
+        const lw = pdf.getTextWidth(`${label} `);
+        pdf.text(`${label} `, totalsX, y);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(value, totalsX + lw, y);
+        y += 6;
+      };
+
+      totalRow("Valor do Frete:", "");
+      totalRow(
+        "Valor Total:",
+        budget.finalPrice.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        }),
+      );
+
+      // "Dados Adicionais" sublinhado
+      let dY = totalsStartY;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Dados Adicionais", dadosX, dY);
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.6);
+      pdf.line(dadosX, dY + 1.5, dadosX + 55, dY + 1.5);
+      dY += 7;
+
+      if (budget.notes?.trim()) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(85, 85, 85);
+        const notesLines = pdf.splitTextToSize(
+          budget.notes.trim(),
+          dadosW,
+        ) as string[];
+        pdf.text(notesLines, dadosX, dY);
+      }
+
+      // ── 6. ASSINATURA ────────────────────────────────────────────────────────
+      y = Math.max(y, dY) + 14;
+      ensureSpace(24);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      pdf.text("Att", MX, y);
+      y += 4.5;
+      pdf.setFont("helvetica", "bold");
+      pdf.text(COMPANY_CONTACT, MX, y);
       y += 4.5;
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8.5);
-      const subtitleLines = pdf.splitTextToSize(proposalSubtitle, contentWidth);
-      pdf.text(subtitleLines, marginX, y);
-      y += subtitleLines.length * 3.8 + 3;
-
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8);
-      pdf.text(`Data de emissao: ${issueDate}`, marginX, y);
-      y += 5;
-
-      const ensureSpace = (neededHeight: number) => {
-        if (y + neededHeight <= bottomLimit) {
-          return;
-        }
-
-        pdf.addPage();
-        y = 14;
-      };
-
-      const writeSectionTitle = (title: string) => {
-        ensureSpace(8);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9.5);
-        pdf.text(title, marginX + 4, y);
-        y += 4.5;
-      };
-
-      const writeBulletLine = (line: ProposalSectionLine) => {
-        const bulletX = marginX + 4 + line.indentLevel * 4;
-        const textX = bulletX + 3;
-        const wrapped = pdf.splitTextToSize(
-          line.text,
-          contentWidth - (textX - marginX) - 2,
-        ) as string[];
-        const blockHeight = Math.max(4.2, wrapped.length * 3.8 + 0.8);
-        ensureSpace(blockHeight + 0.8);
-
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8.3);
-        pdf.text("•", bulletX, y);
-        pdf.text(wrapped, textX, y);
-        y += blockHeight;
-      };
-
-      const architectureLines = parseProposalSectionLines(
-        budget.description,
-        DEFAULT_ARCHITECTURE_LINES,
-      );
-      const alvenariaLines = parseProposalSectionLines(
-        budget.notes,
-        DEFAULT_ALVENARIA_LINES,
-      );
-
-      writeSectionTitle("Arquitetura:");
-      architectureLines.forEach(writeBulletLine);
-
-      y += 2;
-      writeSectionTitle("Alvenaria:");
-      alvenariaLines.forEach(writeBulletLine);
-
-      y += 4;
-      ensureSpace(40);
-
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(8.8);
-      pdf.text(
-        `Valor unitario: ${formatCurrency(budget.finalPrice)}`,
-        marginX,
-        y,
-      );
-
-      y += 5;
-      const validityStatusText = budget.isExpired
-        ? "Expirado"
-        : "Dentro da validade";
-      const summaryLines = [
-        `Prazo estimado de entrega: ${formatBusinessDaysLabel(budget.estimatedDeliveryBusinessDays)} (Após assinar contrato)`,
-        `Validade do orçamento: ${budget.validityBusinessDays} dias uteis`,
-        `Dias uteis decorridos: ${budget.elapsedBusinessDays}`,
-        `Dias uteis restantes: ${budget.remainingValidityBusinessDays}`,
-        `Situacao: ${validityStatusText}`,
-      ];
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8);
-      const summaryText = pdf.splitTextToSize(
-        summaryLines.join("\n"),
-        contentWidth,
-      ) as string[];
-      pdf.text(summaryText, marginX, y);
-      y += summaryText.length * 3.8 + 2.5;
-
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(8);
-      const paymentTermsText =
-        budget.paymentTerms?.trim() || DEFAULT_BUDGET_PDF_PAYMENT_TERMS;
-      const paymentLines = pdf.splitTextToSize(
-        paymentTermsText,
-        contentWidth,
-      ) as string[];
-      pdf.text(paymentLines, marginX, y);
-      y += paymentLines.length * 3.8 + 2.5;
-
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(7.7);
-      const disclaimer = pdf.splitTextToSize(
-        "Este e um orcamento previo, podem haver mudancas de valores caso no ato do projeto seja aprovado itens nao inclusos neste orcamento.",
-        contentWidth,
-      ) as string[];
-      pdf.text(disclaimer, marginX, y);
-      y += disclaimer.length * 3.6 + 4;
-
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(8.5);
-      pdf.text("Atenciosamente,", marginX, y);
-      y += 4;
-      pdf.text("Claudinei Cosso", marginX, y);
-      y += 4;
-      pdf.text("Executivo Comercial", marginX, y);
-      y += 4;
-      pdf.text("+55 11 98327 0902", marginX, y);
-      y += 4;
-      pdf.text(
-        "Escritorio: Av Cochoeiro Paulista, 17 Cidade Patriarca Cep 03551-000 Sao Paulo - SP",
-        marginX,
-        y,
-      );
+      pdf.text(COMPANY_DEPT, MX, y);
+      y += 4.5;
+      pdf.text(COMPANY_CELL, MX, y);
+      y += 4.5;
+      pdf.text(COMPANY_EMAIL, MX, y);
 
       const safeClientName = sanitizeFileName(budget.clientName) || "cliente";
       pdf.save(`orcamento-${budget.id}-${safeClientName}.pdf`);
@@ -5414,17 +5535,16 @@ const BudgetsPage = () => {
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
               Informações Fixas da Contratada
             </p>
-            <p className="text-sm text-foreground">4D PAPELAO - PRODUCAO</p>
+            <p className="text-sm text-foreground">4D EMBALAGENS LTDA</p>
             <p className="text-xs text-muted-foreground">
-              Rua Professor Athanassof, 28 • Cid. Patriarca • São Paulo/SP
+              Rua Benedito Passos, 160 • Vila Matilde • São Paulo/SP
             </p>
             <p className="text-xs text-muted-foreground">
-              CNPJ 07.313.928/0001-75 • +55 11 98327-0902 •
-              comercial@4dpapelao.com.br
+              CNPJ 62.728.414/0001-99 • (11) 2651-4292 •
+              daniel@4dembalagens.com.br
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Assinatura fixa da contratada: Daniel De Souza (Executivo
-              Comercial).
+              Assinatura fixa da contratada: Daniel Visnardi (Dpto Comercial).
             </p>
           </div>
 
