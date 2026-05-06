@@ -2157,6 +2157,7 @@ const BudgetsPage = () => {
 
   const marginPercentage = Math.max(0, Number(form.profitMargin) || 0);
   const marginDecimal = marginPercentage / 100;
+  const createClaPreview = calculatePaperboardPreview(createClaForm);
   const materialCost = form.items.reduce(
     (sum, item) => sum + (Number(item.subtotal) || 0),
     0,
@@ -2176,7 +2177,11 @@ const BudgetsPage = () => {
     Number(form.costsApplicableValue) || 0,
   );
 
-  const totalCostWithExpenses = materialCost;
+  const createBaseTotalForMargin =
+    createUseCla && createClaPreview
+      ? createClaPreview.suggestedPrice * (createClaForm.quantity || 1)
+      : materialCost;
+  const totalCostWithExpenses = createBaseTotalForMargin;
   const profitValueWithExpenses = totalCostWithExpenses * marginDecimal;
   const finalPriceWithExpenses = totalCostWithExpenses + profitValueWithExpenses;
 
@@ -2199,13 +2204,14 @@ const BudgetsPage = () => {
     Number(detailForm.profitMargin) || 0,
   );
   const detailMarginDecimal = detailMarginPercentage / 100;
-  const detailTotalCostWithExpenses = detailMaterialCost;
+  const detailBaseTotalForMargin =
+    paperboardConfig?.suggestedPrice ?? detailMaterialCost;
+  const detailTotalCostWithExpenses = detailBaseTotalForMargin;
   const detailProfitValueWithExpenses =
     detailTotalCostWithExpenses * detailMarginDecimal;
   const detailFinalPriceWithExpenses =
     detailTotalCostWithExpenses + detailProfitValueWithExpenses;
   const paperboardPreview = calculatePaperboardPreview(paperboardForm);
-  const createClaPreview = calculatePaperboardPreview(createClaForm);
   const detailPersistedTotalCost = Math.max(
     0,
     Number(selectedBudget?.totalCost) || detailTotalCostWithExpenses,
@@ -2354,19 +2360,14 @@ const BudgetsPage = () => {
     setApplicableCostsFieldErrors({});
 
     try {
-      const claTotalPrice =
-        createUseCla && createClaPreview
-          ? createClaPreview.suggestedPrice * (createClaForm.quantity || 1)
-          : null;
-
       const created = await createBudget({
         clientName: client.name,
         category: form.category,
         description: form.description.trim(),
         deliveryDate: null,
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
-        totalPrice: claTotalPrice ?? finalPriceWithExpenses,
-        finalPrice: claTotalPrice ?? finalPriceWithExpenses,
+        totalPrice: finalPriceWithExpenses,
+        finalPrice: finalPriceWithExpenses,
         profitMargin: normalizedProfitMargin,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
@@ -2759,8 +2760,7 @@ const BudgetsPage = () => {
     setDetailExpenseDepartmentsFieldErrors({});
     setDetailApplicableCostsFieldErrors({});
 
-    const totalPriceToPersist =
-      paperboardConfig?.suggestedPrice ?? detailFinalPriceWithExpenses;
+    const totalPriceToPersist = detailFinalPriceWithExpenses;
 
     try {
       const updated = mapBudgetFromApi(
@@ -4415,7 +4415,7 @@ const BudgetsPage = () => {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 label="Margem de lucro (%)"
                 type="number"
@@ -4429,18 +4429,6 @@ const BudgetsPage = () => {
                     profitMargin: Math.max(0, Number(e.target.value) || 0),
                   }))
                 }
-              />
-              <FormField
-                label="Custo (R$)"
-                type="number"
-                value={Number(totalCostWithExpenses.toFixed(2))}
-                disabled
-              />
-              <FormField
-                label="Lucro (R$)"
-                type="number"
-                value={Number(profitValueWithExpenses.toFixed(2))}
-                disabled
               />
               <FormField
                 label="Preço final (R$)"
@@ -4904,20 +4892,7 @@ const BudgetsPage = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <FormField
-                label="Custo (R$)"
-                type="number"
-                value={Number(detailTotalCostWithExpenses.toFixed(2))}
-                disabled
-              />
-
-              <FormField
-                label="Lucro (R$)"
-                type="number"
-                value={Number(detailProfitValueWithExpenses.toFixed(2))}
-                disabled
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               <FormField
                 label="Custo aplicavel (R$)"
