@@ -1,6 +1,16 @@
-import { ApiError, parseCollection, request, toNullableString } from "@/services/api";
+import {
+  ApiError,
+  parseCollection,
+  request,
+  toNullableString,
+} from "@/services/api";
 
-export type BudgetStatus = "draft" | "pending" | "pre_approved" | "approved" | "rejected";
+export type BudgetStatus =
+  | "draft"
+  | "pending"
+  | "pre_approved"
+  | "approved"
+  | "rejected";
 export type BudgetCategory = "arquitetonico" | "executivo";
 
 export interface BudgetMaterial {
@@ -116,7 +126,12 @@ export class ApproveBudgetError extends Error {
   code: ApproveBudgetErrorCode;
   details: ApproveBudgetStockDetail[];
 
-  constructor({ status, code, message, details = [] }: ApproveBudgetErrorInput) {
+  constructor({
+    status,
+    code,
+    message,
+    details = [],
+  }: ApproveBudgetErrorInput) {
     super(message);
     this.status = status;
     this.code = code;
@@ -188,7 +203,9 @@ const toOptionalMargin = (value: unknown) => {
   return numeric;
 };
 
-const mapApproveBudgetDetail = (value: unknown): ApproveBudgetStockDetail | null => {
+const mapApproveBudgetDetail = (
+  value: unknown,
+): ApproveBudgetStockDetail | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -197,10 +214,21 @@ const mapApproveBudgetDetail = (value: unknown): ApproveBudgetStockDetail | null
 
   const productId = toStringSafe(item.productId ?? item.product_id, "");
   const productName = toStringSafe(item.productName ?? item.product_name, "");
-  const requestedQuantity = toNumberSafe(item.requestedQuantity ?? item.requested_quantity, 0);
-  const availableStock = toNumberSafe(item.availableStock ?? item.available_stock, 0);
+  const requestedQuantity = toNumberSafe(
+    item.requestedQuantity ?? item.requested_quantity,
+    0,
+  );
+  const availableStock = toNumberSafe(
+    item.availableStock ?? item.available_stock,
+    0,
+  );
 
-  if (!productId && !productName && requestedQuantity === 0 && availableStock === 0) {
+  if (
+    !productId &&
+    !productName &&
+    requestedQuantity === 0 &&
+    availableStock === 0
+  ) {
     return null;
   }
 
@@ -252,14 +280,16 @@ const mapApproveBudgetError = (error: ApiError) => {
       return new ApproveBudgetError({
         status: 400,
         code: "invalid_material_data",
-        message: "Dados inconsistentes no orcamento. Revise materiais e produtos vinculados.",
+        message:
+          "Dados inconsistentes no orcamento. Revise materiais e produtos vinculados.",
         details,
       });
     case 500:
       return new ApproveBudgetError({
         status: 500,
         code: "stock_schema_missing",
-        message: "Configuracao de estoque indisponivel no servidor. Contate o suporte.",
+        message:
+          "Configuracao de estoque indisponivel no servidor. Contate o suporte.",
       });
     default:
       return new ApproveBudgetError({
@@ -271,7 +301,9 @@ const mapApproveBudgetError = (error: ApiError) => {
   }
 };
 
-export const formatApproveBudgetDetailMessage = (detail: ApproveBudgetStockDetail) => {
+export const formatApproveBudgetDetailMessage = (
+  detail: ApproveBudgetStockDetail,
+) => {
   const productName = detail.productName || "Produto";
   const productId = detail.productId || "sem-id";
 
@@ -325,7 +357,9 @@ const normalizeBudgetMaterial = (value: unknown): BudgetMaterial | null => {
   };
 };
 
-const normalizeBudgetExpenseDepartment = (value: unknown): BudgetExpenseDepartment | null => {
+const normalizeBudgetExpenseDepartment = (
+  value: unknown,
+): BudgetExpenseDepartment | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -352,7 +386,9 @@ const normalizeBudgetExpenseDepartment = (value: unknown): BudgetExpenseDepartme
   };
 };
 
-const normalizeBudgetApplicableCost = (value: unknown): BudgetApplicableCost | null => {
+const normalizeBudgetApplicableCost = (
+  value: unknown,
+): BudgetApplicableCost | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -377,7 +413,9 @@ const normalizeBudgetApplicableCost = (value: unknown): BudgetApplicableCost | n
   };
 };
 
-const normalizeExpenseDepartmentCatalogItem = (value: unknown): ExpenseDepartmentCatalogItem | null => {
+const normalizeExpenseDepartmentCatalogItem = (
+  value: unknown,
+): ExpenseDepartmentCatalogItem | null => {
   const item = toRecord(value);
 
   if (!item) {
@@ -396,7 +434,10 @@ const normalizeExpenseDepartmentCatalogItem = (value: unknown): ExpenseDepartmen
     id,
     name,
     sector,
-    defaultAmount: Math.max(0, toNumberSafe(item.defaultAmount ?? item.default_amount, 0)),
+    defaultAmount: Math.max(
+      0,
+      toNumberSafe(item.defaultAmount ?? item.default_amount, 0),
+    ),
     createdAt: toStringSafe(item.createdAt ?? item.created_at, ""),
     updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
   };
@@ -426,8 +467,12 @@ const normalizeBudget = (value: unknown): Budget | null => {
       ? (item.applicableCosts ?? item.applicable_costs)
       : []
   ) as unknown[];
-  const financialSummary = toRecord(item.financialSummary ?? item.financial_summary);
-  const totalCost = toOptionalNumber(item.totalCost ?? item.total_cost ?? item.cost ?? item.cost_price);
+  const financialSummary = toRecord(
+    item.financialSummary ?? item.financial_summary,
+  );
+  const totalCost = toOptionalNumber(
+    item.totalCost ?? item.total_cost ?? item.cost ?? item.cost_price,
+  );
   const laborCost = toOptionalNumber(item.laborCost ?? item.labor_cost);
   const profitMargin =
     toOptionalMargin(
@@ -456,7 +501,10 @@ const normalizeBudget = (value: unknown): Budget | null => {
 
   return {
     id,
-    clientName: toStringSafe(item.clientName ?? item.client_name, "Cliente não informado"),
+    clientName: toStringSafe(
+      item.clientName ?? item.client_name,
+      "Cliente não informado",
+    ),
     category: normalizeCategory(item.category),
     description: toStringSafe(item.description, ""),
     status: normalizeStatus(item.status),
@@ -474,7 +522,8 @@ const normalizeBudget = (value: unknown): Budget | null => {
       item.elapsedBusinessDays ?? item.elapsed_business_days,
     ),
     remainingValidityBusinessDays: toOptionalNumber(
-      item.remainingValidityBusinessDays ?? item.remaining_validity_business_days,
+      item.remainingValidityBusinessDays ??
+        item.remaining_validity_business_days,
     ),
     isExpired: toOptionalBoolean(item.isExpired ?? item.is_expired),
     totalPrice: toNumberSafe(item.totalPrice ?? item.total_price, 0),
@@ -496,8 +545,12 @@ const normalizeBudget = (value: unknown): Budget | null => {
     costsApplicableValue: toOptionalNumber(
       item.costsApplicableValue ?? item.costs_applicable_value,
     ),
-    costsAppliedAt: toNullableIsoString(item.costsAppliedAt ?? item.costs_applied_at),
-    costsAppliedValue: toOptionalNumber(item.costsAppliedValue ?? item.costs_applied_value),
+    costsAppliedAt: toNullableIsoString(
+      item.costsAppliedAt ?? item.costs_applied_at,
+    ),
+    costsAppliedValue: toOptionalNumber(
+      item.costsAppliedValue ?? item.costs_applied_value,
+    ),
     createdAt: toStringSafe(item.createdAt ?? item.created_at, ""),
     updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
     materials: rawMaterials
@@ -505,14 +558,17 @@ const normalizeBudget = (value: unknown): Budget | null => {
       .filter((material): material is BudgetMaterial => Boolean(material)),
     expenseDepartments: rawExpenseDepartments
       .map(normalizeBudgetExpenseDepartment)
-      .filter((department): department is BudgetExpenseDepartment => Boolean(department)),
+      .filter((department): department is BudgetExpenseDepartment =>
+        Boolean(department),
+      ),
     applicableCosts: rawApplicableCosts
       .map(normalizeBudgetApplicableCost)
       .filter((cost): cost is BudgetApplicableCost => Boolean(cost)),
     financialSummary: financialSummary
       ? {
           costsApplicableValue: toOptionalNumber(
-            financialSummary.costsApplicableValue ?? financialSummary.costs_applicable_value,
+            financialSummary.costsApplicableValue ??
+              financialSummary.costs_applicable_value,
           ),
           expenseDepartmentsCost: toOptionalNumber(
             financialSummary.expenseDepartmentsCost ??
@@ -523,13 +579,16 @@ const normalizeBudget = (value: unknown): Budget | null => {
               financialSummary.applicable_costs_cost,
           ),
           costsAppliedAt: toNullableIsoString(
-            financialSummary.costsAppliedAt ?? financialSummary.costs_applied_at,
+            financialSummary.costsAppliedAt ??
+              financialSummary.costs_applied_at,
           ),
           costsAppliedValue: toOptionalNumber(
-            financialSummary.costsAppliedValue ?? financialSummary.costs_applied_value,
+            financialSummary.costsAppliedValue ??
+              financialSummary.costs_applied_value,
           ),
           remainingCostToApply: toOptionalNumber(
-            financialSummary.remainingCostToApply ?? financialSummary.remaining_cost_to_apply,
+            financialSummary.remainingCostToApply ??
+              financialSummary.remaining_cost_to_apply,
           ),
         }
       : undefined,
@@ -560,7 +619,10 @@ const ensureBudget = (payload: unknown, fallbackMessage: string) => {
   return normalized;
 };
 
-const toBudgetPayload = (input: CreateBudgetInput | UpdateBudgetInput, partial = false) => {
+const toBudgetPayload = (
+  input: CreateBudgetInput | UpdateBudgetInput,
+  partial = false,
+) => {
   const payload: Record<string, unknown> = {};
 
   if (!partial || input.clientName !== undefined) {
@@ -581,7 +643,8 @@ const toBudgetPayload = (input: CreateBudgetInput | UpdateBudgetInput, partial =
 
   if (!partial || input.estimatedDeliveryBusinessDays !== undefined) {
     const value = toOptionalNumber(input.estimatedDeliveryBusinessDays);
-    payload.estimatedDeliveryBusinessDays = value === undefined ? null : Math.max(0, Math.trunc(value));
+    payload.estimatedDeliveryBusinessDays =
+      value === undefined ? null : Math.max(0, Math.trunc(value));
   }
 
   if (!partial || input.totalPrice !== undefined) {
@@ -589,7 +652,10 @@ const toBudgetPayload = (input: CreateBudgetInput | UpdateBudgetInput, partial =
   }
 
   if (!partial || input.costsApplicableValue !== undefined) {
-    payload.costsApplicableValue = Math.max(0, toNumberSafe(input.costsApplicableValue, 0));
+    payload.costsApplicableValue = Math.max(
+      0,
+      toNumberSafe(input.costsApplicableValue, 0),
+    );
   }
 
   if (!partial || input.notes !== undefined) {
@@ -615,12 +681,14 @@ const toBudgetPayload = (input: CreateBudgetInput | UpdateBudgetInput, partial =
   }
 
   if (!partial || input.expenseDepartments !== undefined) {
-    payload.expenseDepartments = (input.expenseDepartments || []).map((department) => ({
-      expenseDepartmentId: toNullableString(department.expenseDepartmentId),
-      name: toStringSafe(department.name, "").trim(),
-      sector: toStringSafe(department.sector, "").trim(),
-      amount: Math.max(0, toNumberSafe(department.amount, 0)),
-    }));
+    payload.expenseDepartments = (input.expenseDepartments || []).map(
+      (department) => ({
+        expenseDepartmentId: toNullableString(department.expenseDepartmentId),
+        name: toStringSafe(department.name, "").trim(),
+        sector: toStringSafe(department.sector, "").trim(),
+        amount: Math.max(0, toNumberSafe(department.amount, 0)),
+      }),
+    );
   }
 
   if (!partial || input.applicableCosts !== undefined) {
@@ -659,13 +727,20 @@ export const listBudgets = async (category?: BudgetCategory) => {
 
 export const getBudgetById = async (id: string) => {
   const payload = await request<unknown>(`/budgets/${id}`);
-  return ensureBudget(payload, "Não foi possível carregar os detalhes do orçamento.");
+  return ensureBudget(
+    payload,
+    "Não foi possível carregar os detalhes do orçamento.",
+  );
 };
 
 export const listExpenseDepartments = async (search?: string) => {
   const normalizedSearch = toStringSafe(search, "").trim();
-  const query = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : "";
-  const payload = await request<unknown>(`/budgets/expense-departments${query}`);
+  const query = normalizedSearch
+    ? `?search=${encodeURIComponent(normalizedSearch)}`
+    : "";
+  const payload = await request<unknown>(
+    `/budgets/expense-departments${query}`,
+  );
   const unwrapped = unwrapDataEnvelope(payload);
 
   if (Array.isArray(unwrapped)) {
@@ -695,6 +770,10 @@ export const updateBudget = async (id: string, input: UpdateBudgetInput) => {
   });
 
   return ensureBudget(payload, "Não foi possível atualizar o orçamento.");
+};
+
+export const deleteBudget = async (id: string): Promise<void> => {
+  await request<unknown>(`/budgets/${id}`, { method: "DELETE" });
 };
 
 export const approveBudget = async (id: string) => {

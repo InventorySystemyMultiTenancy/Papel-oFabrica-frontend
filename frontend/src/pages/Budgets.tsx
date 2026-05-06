@@ -20,6 +20,7 @@ import {
   listBudgets,
   listExpenseDepartments,
   updateBudget,
+  deleteBudget,
   type Budget as ApiBudget,
   type BudgetCategory,
   type BudgetMaterial as ApiBudgetMaterial,
@@ -1487,6 +1488,44 @@ const BudgetsPage = () => {
         Number(detailForm.costsApplicableValue) || 0,
       ),
     });
+  };
+
+  const handleDeleteBudget = async (budget: BudgetRow) => {
+    const Swal = (await import("sweetalert2")).default;
+    const result = await Swal.fire({
+      title: "Excluir orçamento?",
+      html: `O orçamento de <b>${budget.clientName}</b> será excluído permanentemente.<br/>Esta ação não pode ser desfeita.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Sim, excluir",
+      cancelButtonText: "Cancelar",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteBudget(budget.id);
+      setData((current) => current.filter((b) => b.id !== budget.id));
+      if (selectedBudget?.id === budget.id) {
+        setDetailModalOpen(false);
+        setSelectedBudget(null);
+      }
+      await Swal.fire({
+        title: "Excluído!",
+        text: "O orçamento foi excluído com sucesso.",
+        icon: "success",
+        timer: 1800,
+        showConfirmButton: false,
+      });
+    } catch {
+      await Swal.fire({
+        title: "Erro",
+        text: "Não foi possível excluir o orçamento. Tente novamente.",
+        icon: "error",
+      });
+    }
   };
 
   const openApproveModal = (budget: BudgetRow) => {
@@ -3623,6 +3662,16 @@ const BudgetsPage = () => {
             className="px-2 py-1 text-[11px] font-bold rounded border border-border text-foreground hover:bg-secondary transition-colors"
           >
             CONTRATO
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleDeleteBudget(b);
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            EXCLUIR
           </button>
 
           {(b.status === "draft" || b.status === "pending") && (
