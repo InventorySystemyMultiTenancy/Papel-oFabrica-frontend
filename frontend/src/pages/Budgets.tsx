@@ -1088,6 +1088,27 @@ const BudgetsPage = () => {
   );
   const [newItem, setNewItem] = useState(createEmptyMaterialInput);
   const [detailNewItem, setDetailNewItem] = useState(createEmptyMaterialInput);
+  // CLA mode for creation
+  const [createUseCla, setCreateUseCla] = useState(false);
+  const [createClaForm, setCreateClaForm] = useState<PaperboardConfigInput>({
+    length: 0,
+    width: 0,
+    height: 0,
+    gramatura: 0,
+    quantity: 0,
+    sheetsPerBundle: undefined,
+    sheetUnitCost: undefined,
+    cuttingCostPerKg: undefined,
+    creasingCostPerKg: undefined,
+    lossPercentage: 0,
+    markupPercentage: 35,
+    usesFullSheet: false,
+    outsourcedCut: false,
+    isFirstPurchase: false,
+    clicheCost: undefined,
+    clichePrice: undefined,
+  });
+
   const [contractForm, setContractForm] = useState<ContractFormState>({
     contratanteName: "",
     operationName: "",
@@ -2132,6 +2153,7 @@ const BudgetsPage = () => {
   const detailFinalPriceWithExpenses =
     detailTotalCostWithExpenses * (1 + detailProfitMargin);
   const paperboardPreview = calculatePaperboardPreview(paperboardForm);
+  const createClaPreview = calculatePaperboardPreview(createClaForm);
   const detailPersistedTotalCost = Math.max(
     0,
     Number(selectedBudget?.totalCost) || detailTotalCostWithExpenses,
@@ -2161,6 +2183,25 @@ const BudgetsPage = () => {
     setExpenseDepartmentsFieldErrors({});
     setApplicableCostsFieldErrors({});
     setNewItem(createEmptyMaterialInput());
+    setCreateUseCla(false);
+    setCreateClaForm({
+      length: 0,
+      width: 0,
+      height: 0,
+      gramatura: 0,
+      quantity: 0,
+      sheetsPerBundle: undefined,
+      sheetUnitCost: undefined,
+      cuttingCostPerKg: undefined,
+      creasingCostPerKg: undefined,
+      lossPercentage: 0,
+      markupPercentage: 35,
+      usesFullSheet: false,
+      outsourcedCut: false,
+      isFirstPurchase: false,
+      clicheCost: undefined,
+      clichePrice: undefined,
+    });
     setPendingStatusChange((current) =>
       current?.scope === "create" ? null : current,
     );
@@ -2219,8 +2260,15 @@ const BudgetsPage = () => {
       return;
     }
 
-    if (form.items.length === 0) {
-      setFormError("Adicione ao menos um material no orçamento.");
+    if (!createUseCla && form.items.length === 0) {
+      setFormError("Adicione ao menos um material ou use o Cálculo CLA.");
+      return;
+    }
+
+    if (createUseCla && !createClaPreview) {
+      setFormError(
+        "Preencha os campos do Cálculo CLA (C, L, A, gramatura e quantidade).",
+      );
       return;
     }
 
@@ -2248,36 +2296,43 @@ const BudgetsPage = () => {
     setApplicableCostsFieldErrors({});
 
     try {
+      const claTotalPrice =
+        createUseCla && createClaPreview
+          ? createClaPreview.suggestedPrice * (createClaForm.quantity || 1)
+          : null;
+
       const created = await createBudget({
         clientName: client.name,
         category: form.category,
         description: form.description.trim(),
         deliveryDate: null,
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
-        totalPrice: finalPriceWithExpenses,
+        totalPrice: claTotalPrice ?? finalPriceWithExpenses,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
         paymentTerms: form.paymentTerms.trim()
           ? form.paymentTerms.trim()
           : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
         status: form.status,
-        materials: form.items.map((item) => {
-          const payloadItem = {
-            productName: item.productName,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitPrice: item.unitPrice,
-          };
+        materials: createUseCla
+          ? []
+          : form.items.map((item) => {
+              const payloadItem = {
+                productName: item.productName,
+                quantity: item.quantity,
+                unit: item.unit,
+                unitPrice: item.unitPrice,
+              };
 
-          if (item.productId) {
-            return {
-              ...payloadItem,
-              productId: item.productId,
-            };
-          }
+              if (item.productId) {
+                return {
+                  ...payloadItem,
+                  productId: item.productId,
+                };
+              }
 
-          return payloadItem;
-        }),
+              return payloadItem;
+            }),
         expenseDepartments: form.expenseDepartments.map((department) => ({
           expenseDepartmentId: department.expenseDepartmentId,
           name: department.name.trim(),
@@ -2290,6 +2345,15 @@ const BudgetsPage = () => {
           amount: Math.max(0, Number(cost.amount) || 0),
         })),
       });
+
+      // Se criou via CLA, salva a configuração de papelão imediatamente
+      if (createUseCla && createClaPreview) {
+        try {
+          await upsertPaperboardConfig(created.id, createClaForm);
+        } catch {
+          // não bloqueia o fluxo, pode ser editado depois
+        }
+      }
 
       setData((current) => [
         mapBudgetFromApi(created, clientsCatalog),
@@ -2960,7 +3024,7 @@ const BudgetsPage = () => {
       const totX = unitX + 20;
       const numW = 20;
 
-      // Cabeçalho
+      // Cabeçalho da tabela
       ensureSpace(10);
       pdf.setFillColor(242, 242, 242);
       pdf.rect(MX, y, CW, 8, "FD");
@@ -2975,44 +3039,110 @@ const BudgetsPage = () => {
       pdf.text("R$ TOTAL", totX + numW, y + 5.5, { align: "right" });
       y += 8;
 
-      // Linhas dos produtos
-      budget.items.forEach((item, idx) => {
-        ensureSpace(8);
-        if (idx % 2 === 0) {
-          pdf.setFillColor(255, 255, 255);
-        } else {
-          pdf.setFillColor(242, 242, 242);
-        }
-        pdf.rect(MX, y, CW, 8, "FD");
-        pdf.setDrawColor(221, 221, 221);
-        pdf.rect(MX, y, CW, 8, "S");
+      if (budget.items.length > 0) {
+        // Linhas dos produtos do estoque
+        budget.items.forEach((item, idx) => {
+          ensureSpace(8);
+          if (idx % 2 === 0) {
+            pdf.setFillColor(255, 255, 255);
+          } else {
+            pdf.setFillColor(242, 242, 242);
+          }
+          pdf.rect(MX, y, CW, 8, "FD");
+          pdf.setDrawColor(221, 221, 221);
+          pdf.rect(MX, y, CW, 8, "S");
 
-        const total = item.quantity * item.unitPrice;
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(7.8);
-        pdf.setTextColor(0, 0, 0);
-        const descText = pdf.splitTextToSize(
-          item.productName,
-          descW - 6,
-        ) as string[];
-        pdf.text(descText[0] ?? "", MX + 3, y + 5.5);
-        pdf.text(String(item.quantity), qtyX, y + 5.5, { align: "center" });
-        pdf.text(
-          item.unitPrice.toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-          }),
-          unitX + numW,
-          y + 5.5,
-          { align: "right" },
-        );
-        pdf.text(
-          total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
-          totX + numW,
-          y + 5.5,
-          { align: "right" },
-        );
-        y += 8;
-      });
+          const total = item.quantity * item.unitPrice;
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(7.8);
+          pdf.setTextColor(0, 0, 0);
+          const descText = pdf.splitTextToSize(
+            item.productName,
+            descW - 6,
+          ) as string[];
+          pdf.text(descText[0] ?? "", MX + 3, y + 5.5);
+          pdf.text(String(item.quantity), qtyX, y + 5.5, { align: "center" });
+          pdf.text(
+            item.unitPrice.toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+            }),
+            unitX + numW,
+            y + 5.5,
+            { align: "right" },
+          );
+          pdf.text(
+            total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+            totX + numW,
+            y + 5.5,
+            { align: "right" },
+          );
+          y += 8;
+        });
+      } else {
+        // Orçamento via CLA: busca a config e exibe uma linha descritiva
+        let claConfig: PaperboardConfig | null = null;
+        try {
+          claConfig = await getPaperboardConfig(budget.id);
+        } catch {
+          // ignora se não encontrar
+        }
+
+        if (claConfig) {
+          const claDesc = `Caixa de papelao ${claConfig.length}x${claConfig.width}x${claConfig.height}mm | ${claConfig.gramatura}g/m²`;
+          const unitPriceCla = claConfig.suggestedPrice;
+          const totalCla = unitPriceCla * claConfig.quantity;
+
+          ensureSpace(8);
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(MX, y, CW, 8, "FD");
+          pdf.setDrawColor(221, 221, 221);
+          pdf.rect(MX, y, CW, 8, "S");
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(7.8);
+          pdf.setTextColor(0, 0, 0);
+          const claDescLines = pdf.splitTextToSize(
+            claDesc,
+            descW - 6,
+          ) as string[];
+          pdf.text(claDescLines[0] ?? "", MX + 3, y + 5.5);
+          pdf.text(String(claConfig.quantity), qtyX, y + 5.5, {
+            align: "center",
+          });
+          pdf.text(
+            unitPriceCla.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+            unitX + numW,
+            y + 5.5,
+            { align: "right" },
+          );
+          pdf.text(
+            totalCla.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+            totX + numW,
+            y + 5.5,
+            { align: "right" },
+          );
+          y += 8;
+        } else {
+          // Sem itens e sem config CLA: linha vazia
+          ensureSpace(8);
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(MX, y, CW, 8, "FD");
+          pdf.setDrawColor(221, 221, 221);
+          pdf.rect(MX, y, CW, 8, "S");
+          pdf.setFont("helvetica", "italic");
+          pdf.setFontSize(7.5);
+          pdf.setTextColor(120, 120, 120);
+          pdf.text("Ver detalhes do orcamento", MX + 3, y + 5.5);
+          pdf.text(
+            budget.finalPrice.toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+            }),
+            totX + numW,
+            y + 5.5,
+            { align: "right" },
+          );
+          y += 8;
+        }
+      }
 
       // Célula "Total R$"
       ensureSpace(8);
@@ -3734,168 +3864,464 @@ const BudgetsPage = () => {
 
             <div>
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
-                Itens
+                Itens / Produto
               </p>
 
-              {productsError && (
-                <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
-                  <span>{productsError}</span>
-                  <button
-                    onClick={() => void loadProductsForForm()}
-                    className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
-                  >
-                    TENTAR NOVAMENTE
-                  </button>
-                </div>
-              )}
-
-              {form.items.length > 0 && (
-                <div className="border border-border rounded mb-3 divide-y divide-border/50">
-                  {form.items.map((item, i) => (
-                    <div
-                      key={i}
-                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>
-                          {item.productName} × {item.quantity} {item.unit}
-                        </span>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
-                        >
-                          {resolveItemStockStatus(item).label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-xs">
-                          R$ {item.subtotal.toFixed(2)}
-                        </span>
-                        <button
-                          onClick={() => removeItem(i)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
+              {/* Toggle: Estoque vs CLA */}
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    setNewItem((current) => ({
-                      ...createEmptyMaterialInput("existing"),
-                      mode: "existing",
-                    }))
-                  }
+                  onClick={() => setCreateUseCla(false)}
                   className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                    newItem.mode === "existing"
+                    !createUseCla
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:bg-secondary"
                   }`}
                 >
-                  Selecionar produto existente
+                  Produtos do estoque
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    setNewItem((current) => ({
-                      ...createEmptyMaterialInput("new"),
-                      mode: "new",
-                    }))
-                  }
+                  onClick={() => setCreateUseCla(true)}
                   className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                    newItem.mode === "new"
+                    createUseCla
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:bg-secondary"
                   }`}
                 >
-                  Cadastrar material novo
+                  Cálculo CLA (Papelão)
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                <div className="flex-1">
-                  {newItem.mode === "existing" ? (
-                    <FormField
-                      label="Produto"
-                      as="select"
-                      value={newItem.productId}
-                      onChange={(e) =>
-                        setNewItem({ ...newItem, productId: e.target.value })
+              {/* ── MODO ESTOQUE ── */}
+              {!createUseCla && (
+                <>
+                  {productsError && (
+                    <div className="mb-3 border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+                      <span>{productsError}</span>
+                      <button
+                        onClick={() => void loadProductsForForm()}
+                        className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+                      >
+                        TENTAR NOVAMENTE
+                      </button>
+                    </div>
+                  )}
+
+                  {form.items.length > 0 && (
+                    <div className="border border-border rounded mb-3 divide-y divide-border/50">
+                      {form.items.map((item, i) => (
+                        <div
+                          key={i}
+                          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>
+                              {item.productName} × {item.quantity} {item.unit}
+                            </span>
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
+                            >
+                              {resolveItemStockStatus(item).label}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-xs">
+                              R$ {item.subtotal.toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => removeItem(i)}
+                              className="text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewItem((current) => ({
+                          ...createEmptyMaterialInput("existing"),
+                          mode: "existing",
+                        }))
                       }
-                      options={productsCatalog.map((product) => ({
-                        value: product.id,
-                        label: `${product.name} (Saldo: ${product.stockQuantity})`,
-                      }))}
+                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                        newItem.mode === "existing"
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      Selecionar produto existente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewItem((current) => ({
+                          ...createEmptyMaterialInput("new"),
+                          mode: "new",
+                        }))
+                      }
+                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                        newItem.mode === "new"
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      Cadastrar material novo
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="flex-1">
+                      {newItem.mode === "existing" ? (
+                        <FormField
+                          label="Produto"
+                          as="select"
+                          value={newItem.productId}
+                          onChange={(e) =>
+                            setNewItem({
+                              ...newItem,
+                              productId: e.target.value,
+                            })
+                          }
+                          options={productsCatalog.map((product) => ({
+                            value: product.id,
+                            label: `${product.name} (Saldo: ${product.stockQuantity})`,
+                          }))}
+                        />
+                      ) : (
+                        <FormField
+                          label="Novo material"
+                          value={newItem.productName}
+                          onChange={(e) =>
+                            setNewItem({
+                              ...newItem,
+                              productName: e.target.value,
+                            })
+                          }
+                          placeholder="Ex.: MDF Branco 15mm"
+                        />
+                      )}
+                    </div>
+                    <div className="w-full md:w-24">
+                      <FormField
+                        label="Qtd."
+                        type="number"
+                        min={1}
+                        value={newItem.quantity}
+                        onChange={(e) =>
+                          setNewItem({
+                            ...newItem,
+                            quantity: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="w-full md:w-28">
+                      <FormField
+                        label="Unid."
+                        value={newItem.unit}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, unit: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="w-full md:w-32">
+                      <FormField
+                        label="Vlr Unit."
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={newItem.unitPrice}
+                        onChange={(e) =>
+                          setNewItem({
+                            ...newItem,
+                            unitPrice: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={addItem}
+                        disabled={
+                          newItem.mode === "existing" &&
+                          (isLoadingProducts || productsCatalog.length === 0)
+                        }
+                        className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {newItem.mode === "existing" && isLoadingProducts
+                          ? "CARREGANDO..."
+                          : "ADICIONAR"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── MODO CLA ── */}
+              {createUseCla && (
+                <div className="space-y-3 border border-border rounded p-3 bg-secondary/10">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                    Dimensões da caixa (mm)
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <FormField
+                      label="Comprimento (C)"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={createClaForm.length || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          length: Number(e.target.value),
+                        }))
+                      }
                     />
+                    <FormField
+                      label="Largura (L)"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={createClaForm.width || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          width: Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <FormField
+                      label="Altura (A)"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={createClaForm.height || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          height: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      label="Gramatura (g/m²)"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={createClaForm.gramatura || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          gramatura: Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <FormField
+                      label="Quantidade"
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={createClaForm.quantity || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          quantity: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      label="Folhas por fardo"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={createClaForm.sheetsPerBundle ?? ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          sheetsPerBundle: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                    <FormField
+                      label="Custo por folha (R$)"
+                      type="number"
+                      min={0}
+                      step="0.0001"
+                      value={createClaForm.sheetUnitCost ?? ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          sheetUnitCost: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      label="Perda (%)"
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={createClaForm.lossPercentage ?? 0}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          lossPercentage: Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <FormField
+                      label="Markup (%)"
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={createClaForm.markupPercentage ?? 35}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          markupPercentage: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createClaForm.isFirstPurchase ?? false}
+                        onChange={(e) =>
+                          setCreateClaForm((f) => ({
+                            ...f,
+                            isFirstPurchase: e.target.checked,
+                          }))
+                        }
+                      />
+                      Primeira compra (inclui clichê)
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createClaForm.usesFullSheet ?? false}
+                        onChange={(e) =>
+                          setCreateClaForm((f) => ({
+                            ...f,
+                            usesFullSheet: e.target.checked,
+                          }))
+                        }
+                      />
+                      Usa folha inteira
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createClaForm.outsourcedCut ?? false}
+                        onChange={(e) =>
+                          setCreateClaForm((f) => ({
+                            ...f,
+                            outsourcedCut: e.target.checked,
+                          }))
+                        }
+                      />
+                      Corte terceirizado
+                    </label>
+                  </div>
+                  {createClaForm.isFirstPurchase && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        label="Custo clichê (R$)"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={createClaForm.clicheCost ?? ""}
+                        onChange={(e) =>
+                          setCreateClaForm((f) => ({
+                            ...f,
+                            clicheCost: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                      <FormField
+                        label="Preço clichê (R$)"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={createClaForm.clichePrice ?? ""}
+                        onChange={(e) =>
+                          setCreateClaForm((f) => ({
+                            ...f,
+                            clichePrice: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {/* Preview CLA */}
+                  {createClaPreview ? (
+                    <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 border border-border rounded p-2 bg-background">
+                      <div className="text-center">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          Custo unit.
+                        </p>
+                        <p className="font-bold text-sm">
+                          {formatCurrency(createClaPreview.estimatedCost)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          Preço unit.
+                        </p>
+                        <p className="font-bold text-sm text-green-600">
+                          {formatCurrency(createClaPreview.suggestedPrice)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          Total ({createClaForm.quantity} un.)
+                        </p>
+                        <p className="font-bold text-sm">
+                          {formatCurrency(
+                            createClaPreview.suggestedPrice *
+                              (createClaForm.quantity || 1),
+                          )}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          Folhas
+                        </p>
+                        <p className="font-bold text-sm">
+                          {createClaPreview.totalSheets}
+                        </p>
+                      </div>
+                    </div>
                   ) : (
-                    <FormField
-                      label="Novo material"
-                      value={newItem.productName}
-                      onChange={(e) =>
-                        setNewItem({ ...newItem, productName: e.target.value })
-                      }
-                      placeholder="Ex.: MDF Branco 15mm"
-                    />
+                    <p className="text-xs text-muted-foreground">
+                      Preencha C, L, A, gramatura e quantidade para ver o
+                      preview.
+                    </p>
                   )}
                 </div>
-                <div className="w-full md:w-24">
-                  <FormField
-                    label="Qtd."
-                    type="number"
-                    min={1}
-                    value={newItem.quantity}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        quantity: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="w-full md:w-28">
-                  <FormField
-                    label="Unid."
-                    value={newItem.unit}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, unit: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="w-full md:w-32">
-                  <FormField
-                    label="Vlr Unit."
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={newItem.unitPrice}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        unitPrice: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    onClick={addItem}
-                    disabled={
-                      newItem.mode === "existing" &&
-                      (isLoadingProducts || productsCatalog.length === 0)
-                    }
-                    className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {newItem.mode === "existing" && isLoadingProducts
-                      ? "CARREGANDO..."
-                      : "ADICIONAR"}
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
 
             <div>
