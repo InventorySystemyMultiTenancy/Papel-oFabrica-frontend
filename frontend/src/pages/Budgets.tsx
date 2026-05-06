@@ -3062,6 +3062,7 @@ const BudgetsPage = () => {
       const unitX = qtyX + 20;
       const totX = unitX + 20;
       const numW = 20;
+      let tableTotal = 0;
 
       // Cabeçalho da tabela
       ensureSpace(10);
@@ -3092,6 +3093,7 @@ const BudgetsPage = () => {
           pdf.rect(MX, y, CW, 8, "S");
 
           const total = item.quantity * item.unitPrice;
+          tableTotal += total;
           pdf.setFont("helvetica", "normal");
           pdf.setFontSize(7.8);
           pdf.setTextColor(0, 0, 0);
@@ -3130,6 +3132,7 @@ const BudgetsPage = () => {
           const claDesc = `Caixa de papelao ${claConfig.length}x${claConfig.width}x${claConfig.height}mm | ${claConfig.gramatura}g/m²`;
           const unitPriceCla = claConfig.suggestedPrice;
           const totalCla = unitPriceCla * claConfig.quantity;
+          tableTotal = totalCla;
 
           ensureSpace(8);
           pdf.setFillColor(255, 255, 255);
@@ -3179,20 +3182,29 @@ const BudgetsPage = () => {
             y + 5.5,
             { align: "right" },
           );
+          tableTotal = budget.finalPrice;
           y += 8;
         }
       }
 
       // Célula "Total R$"
       ensureSpace(8);
+      const totalBoxX = totX - 14;
+      const totalBoxW = numW + 14;
       pdf.setFillColor(242, 242, 242);
-      pdf.rect(totX - 2, y, numW + 2, 8, "FD");
+      pdf.rect(totalBoxX, y, totalBoxW, 8, "FD");
       pdf.setDrawColor(221, 221, 221);
-      pdf.rect(totX - 2, y, numW + 2, 8, "S");
+      pdf.rect(totalBoxX, y, totalBoxW, 8, "S");
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(7.5);
       pdf.setTextColor(26, 26, 26);
-      pdf.text("Total R$", totX + numW, y + 5.5, { align: "right" });
+      pdf.text("Total R$", totalBoxX + 2, y + 5.5);
+      pdf.text(
+        tableTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        totalBoxX + totalBoxW - 2,
+        y + 5.5,
+        { align: "right" },
+      );
       y += 8;
 
       // ── 5. TOTAIS + DADOS ADICIONAIS ─────────────────────────────────────────
@@ -3228,7 +3240,7 @@ const BudgetsPage = () => {
       totalRow("Valor do Frete:", "");
       totalRow(
         "Valor Total:",
-        budget.finalPrice.toLocaleString("pt-BR", {
+        tableTotal.toLocaleString("pt-BR", {
           style: "currency",
           currency: "BRL",
         }),
@@ -4391,34 +4403,11 @@ const BudgetsPage = () => {
                 }
                 disabled={!isAdmin}
               />
-              <FormField
-                label="Mão de Obra (R$)"
-                type="number"
-                step="0.01"
-                value={form.laborCost}
-                onChange={(e) =>
-                  setForm({ ...form, laborCost: Number(e.target.value) })
-                }
-                disabled={!isAdmin}
-              />
-              <FormField
-                label="Margem de Lucro (%)"
-                type="number"
-                step="1"
-                value={form.profitMargin * 100}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    profitMargin: Number(e.target.value) / 100,
-                  })
-                }
-                disabled={!isAdmin}
-              />
             </div>
 
             {!isAdmin && (
               <p className="text-xs text-muted-foreground -mt-2">
-                Campos de custo e margem são editáveis apenas por admin.
+                Campo de custo aplicável é editável apenas por admin.
               </p>
             )}
 
