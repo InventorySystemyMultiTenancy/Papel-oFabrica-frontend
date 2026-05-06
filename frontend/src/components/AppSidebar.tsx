@@ -6,13 +6,11 @@ import {
   FileText,
   Hammer,
   Truck,
-  ShoppingCart,
   DollarSign,
   Tag,
   Recycle,
   ShoppingBag,
   Calculator,
-  BarChart2,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/auth/AuthProvider";
@@ -34,12 +32,6 @@ const navItems = [
     url: "/",
     icon: LayoutDashboard,
     allowedRoles: ["admin", "gerente", "funcionario"],
-  },
-  {
-    title: "Dashboard Financeiro",
-    url: "/dashboard",
-    icon: BarChart2,
-    allowedRoles: ["admin", "gerente"],
   },
   {
     title: "Clientes",
@@ -66,7 +58,7 @@ const navItems = [
     allowedRoles: ["admin", "gerente"],
   },
   {
-    title: "Produção",
+    title: "Produção (Pedidos)",
     url: "/production",
     icon: Hammer,
     allowedRoles: ["admin", "gerente", "funcionario"],
@@ -76,12 +68,6 @@ const navItems = [
     url: "/logistics",
     icon: Truck,
     allowedRoles: ["admin", "gerente", "funcionario"],
-  },
-  {
-    title: "Pedidos",
-    url: "/orders",
-    icon: ShoppingCart,
-    allowedRoles: ["admin", "gerente"],
   },
   {
     title: "Financeiro",

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,8 +24,24 @@ import WastePage from "./pages/Waste.tsx";
 import PurchaseOrdersPage from "./pages/PurchaseOrders.tsx";
 import PricingPage from "./pages/Pricing.tsx";
 import DashboardPage from "./pages/Dashboard.tsx";
+import { useAuth } from "@/auth/AuthProvider";
 
 const queryClient = new QueryClient();
+
+const DefaultAuthenticatedHome = () => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <Navigate
+      to={user.role === "funcionario" ? "/production" : "/financial"}
+      replace
+    />
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -43,7 +59,8 @@ const App = () => (
               />
 
               <Route element={<RequireAuth />}>
-                <Route path="/" element={<Index />} />
+                <Route path="/" element={<DefaultAuthenticatedHome />} />
+                <Route path="/overview" element={<Index />} />
                 <Route path="/production" element={<ProductionPage />} />
                 <Route path="/logistics" element={<LogisticsHub />} />
                 <Route path="/forbidden" element={<ForbiddenPage />} />
