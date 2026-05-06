@@ -340,7 +340,14 @@ const normalizeBudgetMaterial = (value: unknown): BudgetMaterial | null => {
     return null;
   }
 
-  const productName = toStringSafe(item.productName ?? item.product_name, "");
+  const productName = toStringSafe(
+    item.productName ??
+      item.product_name ??
+      item.name ??
+      item.materialName ??
+      item.material_name,
+    "",
+  );
 
   if (!productName) {
     return null;
@@ -351,9 +358,21 @@ const normalizeBudgetMaterial = (value: unknown): BudgetMaterial | null => {
   return {
     productId: productId || undefined,
     productName,
-    quantity: toNumberSafe(item.quantity, 0),
-    unit: toStringSafe(item.unit, "unidade"),
-    unitPrice: toNumberSafe(item.unitPrice ?? item.unit_price, 0),
+    quantity: toNumberSafe(
+      item.quantity ?? item.qty ?? item.requestedQuantity ?? item.requested_quantity,
+      0,
+    ),
+    unit: toStringSafe(item.unit ?? item.measurementUnit ?? item.measurement_unit, "unidade"),
+    unitPrice: toNumberSafe(
+      item.unitPrice ??
+        item.unit_price ??
+        item.price ??
+        item.unitCost ??
+        item.unit_cost ??
+        item.suggestedPrice ??
+        item.suggested_price,
+      0,
+    ),
   };
 };
 
@@ -456,7 +475,13 @@ const normalizeBudget = (value: unknown): Budget | null => {
     return null;
   }
 
-  const rawMaterials = Array.isArray(item.materials) ? item.materials : [];
+  const rawMaterials = (
+    Array.isArray(item.materials)
+      ? item.materials
+      : Array.isArray(item.items)
+        ? item.items
+        : []
+  ) as unknown[];
   const rawExpenseDepartments = (
     Array.isArray(item.expenseDepartments ?? item.expense_departments)
       ? (item.expenseDepartments ?? item.expense_departments)

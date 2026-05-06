@@ -344,7 +344,31 @@ const ProductionPage = () => {
     );
   };
 
+  const hasBudgetMaterialValues = (budget: Budget) =>
+    (budget.materials || []).some(
+      (material) =>
+        (Number(material.quantity) || 0) > 0 ||
+        (Number(material.unitPrice) || 0) > 0,
+    );
+
   const resolveBudgetTotalCost = (budget: Budget) => {
+    if (!hasBudgetMaterialValues(budget)) {
+      const apiTotalCost = Number(budget.totalCost);
+
+      if (Number.isFinite(apiTotalCost) && apiTotalCost > 0) {
+        return Math.max(0, apiTotalCost);
+      }
+
+      const apiTotalPrice = Number(budget.totalPrice);
+      const apiProfitValue = Number(budget.profitValue);
+
+      if (Number.isFinite(apiTotalPrice) && Number.isFinite(apiProfitValue)) {
+        return Math.max(0, apiTotalPrice - apiProfitValue);
+      }
+
+      return 0;
+    }
+
     // Custo = soma dos R$ Unid (preço unitário) de cada material
     return (budget.materials || []).reduce(
       (sum, material) => sum + (Number(material.unitPrice) || 0),
@@ -353,6 +377,23 @@ const ProductionPage = () => {
   };
 
   const resolveBudgetFinalPrice = (budget: Budget) => {
+    if (!hasBudgetMaterialValues(budget)) {
+      const apiTotalPrice = Number(budget.totalPrice);
+
+      if (Number.isFinite(apiTotalPrice) && apiTotalPrice > 0) {
+        return Math.max(0, apiTotalPrice);
+      }
+
+      const apiTotalCost = Number(budget.totalCost);
+      const apiProfitValue = Number(budget.profitValue);
+
+      if (Number.isFinite(apiTotalCost) && Number.isFinite(apiProfitValue)) {
+        return Math.max(0, apiTotalCost + apiProfitValue);
+      }
+
+      return 0;
+    }
+
     // Preço final = soma de R$ TOTAL (qtd × R$ Unid) de cada material
     return (budget.materials || []).reduce(
       (sum, material) =>
