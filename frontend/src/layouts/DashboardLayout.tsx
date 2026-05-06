@@ -29,7 +29,13 @@ export function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
+    <div className="relative isolate flex min-h-screen text-foreground overflow-hidden">
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center"
+        style={{ backgroundImage: "url('/4dbackimage1.jpg')" }}
+      />
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-background/82" />
+
       <AppSidebar
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
