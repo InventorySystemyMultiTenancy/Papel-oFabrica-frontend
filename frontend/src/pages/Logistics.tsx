@@ -23,6 +23,11 @@ import {
 } from "@/services/logistics";
 import { listStockMovements } from "@/services/stock";
 import { listEmployees } from "@/services/employees";
+import {
+  listPurchaseOrders,
+  type PurchaseOrder,
+} from "@/services/purchase-orders";
+import { listWasteRecords, type WasteRecord } from "@/services/waste";
 import { useRoleAccess } from "@/auth/AuthProvider";
 import {
   ChartContainer,
@@ -252,6 +257,19 @@ const getPreApprovedReferenceDate = (budget: Budget) =>
       budget.deliveryDate,
   );
 
+const getPurchaseOrderReferenceDate = (purchaseOrder: PurchaseOrder) =>
+  normalizeDeliveryDate(
+    purchaseOrder.receivedAt ||
+      purchaseOrder.sentAt ||
+      purchaseOrder.createdAt ||
+      purchaseOrder.expectedDeliveryDate,
+  );
+
+const getWasteSoldReferenceDate = (wasteRecord: WasteRecord) =>
+  normalizeDeliveryDate(
+    wasteRecord.soldAt || wasteRecord.recordDate || wasteRecord.updatedAt,
+  );
+
 const normalizeMarginValue = (value: number) => {
   if (!Number.isFinite(value)) {
     return null;
@@ -323,6 +341,8 @@ const LogisticsPage = () => {
   const { canViewFinancials } = useRoleAccess();
   const [productions, setProductions] = useState<EmployeeProduction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [wasteRecords, setWasteRecords] = useState<WasteRecord[]>([]);
   const [materialUsageRows, setMaterialUsageRows] = useState<
     MaterialUsageRow[]
   >([]);
@@ -354,12 +374,16 @@ const LogisticsPage = () => {
         productionsResult,
         employeesResult,
         budgetsResult,
+        purchaseOrdersResult,
+        wasteRecordsResult,
         materialConsumptionResult,
         stockMovementsFallbackResult,
       ] = await Promise.allSettled([
         listProductions({ active: true }),
         listEmployees(),
         listBudgets(),
+        listPurchaseOrders(),
+        listWasteRecords(),
         listActiveProductionMaterialConsumption({
           startDate: filterDateStart || undefined,
           endDate: filterDateEnd || undefined,
@@ -396,6 +420,24 @@ const LogisticsPage = () => {
         setBudgets([]);
         warnings.push(
           "Não foi possível obter orçamentos do banco para calcular lucro e receita na logística.",
+        );
+      }
+
+      if (purchaseOrdersResult.status === "fulfilled") {
+        setPurchaseOrders(purchaseOrdersResult.value);
+      } else {
+        setPurchaseOrders([]);
+        warnings.push(
+          "Não foi possível obter pedidos de compra do banco para compor custos ativos.",
+        );
+      }
+
+      if (wasteRecordsResult.status === "fulfilled") {
+        setWasteRecords(wasteRecordsResult.value);
+      } else {
+        setWasteRecords([]);
+        warnings.push(
+          "Não foi possível obter resíduos vendidos para compor receita vinculada.",
         );
       }
 
@@ -485,6 +527,8 @@ const LogisticsPage = () => {
     } catch (error) {
       setProductions([]);
       setBudgets([]);
+      setPurchaseOrders([]);
+      setWasteRecords([]);
       setMaterialUsageRows([]);
       setActiveEmployeesCount(null);
       setRequestError(
@@ -705,6 +749,50 @@ const LogisticsPage = () => {
       }, 0);
   }, [budgets, hasInvalidDateRange, parsedFilterStart, parsedFilterEnd]);
 
+  const purchaseOrdersActiveCost = useMemo(() => {
+    if (hasInvalidDateRange) {
+      return 0;
+    }
+
+    return purchaseOrders
+      .filter((purchaseOrder) => purchaseOrder.status !== "cancelled")
+      .filter((purchaseOrder) =>
+        isDateInSelectedRange(getPurchaseOrderReferenceDate(purchaseOrder)),
+      )
+      .reduce(
+        (sum, purchaseOrder) =>
+          sum + Math.max(0, Number(purchaseOrder.totalAmount) || 0),
+        0,
+      );
+  }, [
+    purchaseOrders,
+    hasInvalidDateRange,
+    parsedFilterStart,
+    parsedFilterEnd,
+  ]);
+
+  const soldWasteRevenueTotal = useMemo(() => {
+    if (hasInvalidDateRange) {
+      return 0;
+    }
+
+    return wasteRecords
+      .filter((wasteRecord) => wasteRecord.sold)
+      .filter((wasteRecord) =>
+        isDateInSelectedRange(getWasteSoldReferenceDate(wasteRecord)),
+      )
+      .reduce(
+        (sum, wasteRecord) =>
+          sum + Math.max(0, Number(wasteRecord.saleAmount) || 0),
+        0,
+      );
+  }, [
+    wasteRecords,
+    hasInvalidDateRange,
+    parsedFilterStart,
+    parsedFilterEnd,
+  ]);
+
   const { financialRows, budgetsWithoutMarginCount } = useMemo(() => {
     const rows: FinancialBudgetRow[] = [];
 
@@ -762,27 +850,31 @@ const LogisticsPage = () => {
     };
   }, [approvedBudgets]);
 
-  const financialTotals = useMemo(
-    () =>
-      financialRows.reduce(
-        (acc, item) => {
-          acc.linkedRevenue += item.linkedRevenue;
-          acc.generalCost += item.generalCost;
-          acc.applicableCost += item.applicableCost;
-          acc.grossProfit += item.grossProfit;
-          acc.netProfit += item.netProfit;
-          return acc;
-        },
-        {
-          linkedRevenue: 0,
-          generalCost: 0,
-          applicableCost: 0,
-          grossProfit: 0,
-          netProfit: 0,
-        },
-      ),
-    [financialRows],
-  );
+  const financialTotals = useMemo(() => {
+    const baseTotals = financialRows.reduce(
+      (acc, item) => {
+        acc.linkedRevenue += item.linkedRevenue;
+        acc.generalCost += item.generalCost;
+        acc.applicableCost += item.applicableCost;
+        acc.grossProfit += item.grossProfit;
+        acc.netProfit += item.netProfit;
+        return acc;
+      },
+      {
+        linkedRevenue: 0,
+        generalCost: 0,
+        applicableCost: 0,
+        grossProfit: 0,
+        netProfit: 0,
+      },
+    );
+
+    return {
+      ...baseTotals,
+      generalCost: baseTotals.generalCost + purchaseOrdersActiveCost,
+      linkedRevenue: baseTotals.linkedRevenue + soldWasteRevenueTotal,
+    };
+  }, [financialRows, purchaseOrdersActiveCost, soldWasteRevenueTotal]);
 
   const financialCoverageSummary =
     approvedBudgets.length === 0
@@ -1141,13 +1233,13 @@ const LogisticsPage = () => {
             title="Custo Geral Ativo"
             value={formatCurrency(financialTotals.generalCost)}
             icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Apenas custos dos aprovados oficiais"
+            subtitle="Inclui orçamentos aprovados e pedidos de compra não cancelados"
           />
           <StatCard
             title="Receita Vinculada"
             value={formatCurrency(financialTotals.linkedRevenue)}
             icon={<DollarSign className="h-4 w-4" />}
-            subtitle="Custo total + lucro dos aprovados oficiais"
+            subtitle="Inclui receita de orçamentos e resíduos vendidos"
           />
           <StatCard
             title="Lucro Bruto"

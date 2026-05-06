@@ -4,7 +4,6 @@ import { DataTable } from "@/components/DataTable";
 import { Modal } from "@/components/Modal";
 import { FormField } from "@/components/FormField";
 import { StatusBadge } from "@/components/StatusBadge";
-import { calculateBudget } from "@/data/mockData";
 import { ApiError } from "@/services/api";
 import { dispatchInventoryDataChanged } from "@/lib/inventory-events";
 import {
@@ -74,6 +73,20 @@ const formatCategory = (category: BudgetCategory) => {
     default:
       return category;
   }
+};
+
+const normalizeMarginPercentage = (value: unknown) => {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  if (numeric <= 1) {
+    return Math.max(0, numeric * 100);
+  }
+
+  return Math.max(0, numeric);
 };
 
 const sanitizeFileName = (value: string) =>
@@ -765,7 +778,7 @@ const mapBudgetFromApi = (
   const applicableCostsCost = costsApplicableValue;
   const apiTotalCost = Number(budget.totalCost);
   const apiLaborCost = Number(budget.laborCost);
-  const finalPrice = Number(budget.totalPrice) || 0;
+  const finalPrice = Number(budget.finalPrice ?? budget.totalPrice) || 0;
   const laborCost = Number.isFinite(apiLaborCost)
     ? Math.max(0, apiLaborCost)
     : Math.max(
@@ -781,7 +794,14 @@ const mapBudgetFromApi = (
     ? Math.max(0, apiTotalCost)
     : materialCost + laborCost + expenseDepartmentsCost + applicableCostsCost;
   const profitMargin =
-    totalCost > 0 ? Math.max(0, (finalPrice - totalCost) / totalCost) : 0;
+    Number(budget.profitMarginPercentage) ||
+    normalizeMarginPercentage(
+      Number.isFinite(Number(budget.profitMargin))
+        ? budget.profitMargin
+        : totalCost > 0
+          ? (finalPrice - totalCost) / totalCost
+          : 0,
+    );
 
   const linkedClient = findClientByName(clientsCatalog, budget.clientName);
   const costsAppliedAt =
@@ -968,7 +988,7 @@ const createInitialBudgetForm = () => ({
   paymentTerms: PAYMENT_TERMS_PRESETS,
   laborCost: 0,
   costsApplicableValue: 0,
-  profitMargin: 0.35,
+  profitMargin: 35,
   items: [] as BudgetItemRow[],
   expenseDepartments: [] as BudgetExpenseDepartmentRow[],
   applicableCosts: [] as BudgetApplicableCostRow[],
@@ -983,6 +1003,7 @@ const createInitialDetailForm = () => ({
   paymentTerms: PAYMENT_TERMS_PRESETS,
   status: "draft" as BudgetStatus,
   totalPrice: 0,
+  profitMargin: 35,
   costsApplicableValue: 0,
   items: [] as BudgetItemRow[],
   expenseDepartments: [] as BudgetExpenseDepartmentRow[],
@@ -2134,13 +2155,11 @@ const BudgetsPage = () => {
     return errors;
   };
 
-  const calc = calculateBudget(
-    form.items.map((item) => ({
-      ...item,
-      productId: item.productId || "new-material",
-    })),
-    form.laborCost,
-    form.profitMargin,
+  const marginPercentage = Math.max(0, Number(form.profitMargin) || 0);
+  const marginDecimal = marginPercentage / 100;
+  const materialCost = form.items.reduce(
+    (sum, item) => sum + (Number(item.subtotal) || 0),
+    0,
   );
 
   const expenseDepartmentsCost = form.expenseDepartments.reduce(
@@ -2157,15 +2176,11 @@ const BudgetsPage = () => {
     Number(form.costsApplicableValue) || 0,
   );
 
-  const totalCostWithExpenses =
-    calc.materialCost +
-    form.laborCost +
-    expenseDepartmentsCost +
-    costsApplicableValue;
-  const finalPriceWithExpenses =
-    totalCostWithExpenses * (1 + form.profitMargin);
+  const totalCostWithExpenses = materialCost;
+  const profitValueWithExpenses = totalCostWithExpenses * marginDecimal;
+  const finalPriceWithExpenses = totalCostWithExpenses + profitValueWithExpenses;
 
-  const detailMaterialCost = (selectedBudget?.items || []).reduce(
+  const detailMaterialCost = (detailForm.items || []).reduce(
     (sum, item) => sum + (Number(item.subtotal) || 0),
     0,
   );
@@ -2179,18 +2194,16 @@ const BudgetsPage = () => {
     Number(detailForm.costsApplicableValue) || 0,
   );
 
-  const detailLaborCost = Math.max(0, Number(selectedBudget?.laborCost) || 0);
-  const detailProfitMargin = Math.max(
+  const detailMarginPercentage = Math.max(
     0,
-    Number(selectedBudget?.profitMargin) || 0,
+    Number(detailForm.profitMargin) || 0,
   );
-  const detailTotalCostWithExpenses =
-    detailMaterialCost +
-    detailLaborCost +
-    detailExpenseDepartmentsCost +
-    detailApplicableCostsCost;
+  const detailMarginDecimal = detailMarginPercentage / 100;
+  const detailTotalCostWithExpenses = detailMaterialCost;
+  const detailProfitValueWithExpenses =
+    detailTotalCostWithExpenses * detailMarginDecimal;
   const detailFinalPriceWithExpenses =
-    detailTotalCostWithExpenses * (1 + detailProfitMargin);
+    detailTotalCostWithExpenses + detailProfitValueWithExpenses;
   const paperboardPreview = calculatePaperboardPreview(paperboardForm);
   const createClaPreview = calculatePaperboardPreview(createClaForm);
   const detailPersistedTotalCost = Math.max(
@@ -2299,8 +2312,14 @@ const BudgetsPage = () => {
       return;
     }
 
-    if (!createUseCla && form.items.length === 0) {
-      setFormError("Adicione ao menos um material ou use o Cálculo CLA.");
+    const normalizedProfitMargin = Number(form.profitMargin);
+
+    if (
+      !Number.isFinite(normalizedProfitMargin) ||
+      normalizedProfitMargin < 0 ||
+      normalizedProfitMargin > 100
+    ) {
+      setFormError("A margem de lucro deve estar entre 0 e 100.");
       return;
     }
 
@@ -2347,6 +2366,8 @@ const BudgetsPage = () => {
         deliveryDate: null,
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
         totalPrice: claTotalPrice ?? finalPriceWithExpenses,
+        finalPrice: claTotalPrice ?? finalPriceWithExpenses,
+        profitMargin: normalizedProfitMargin,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
         paymentTerms: form.paymentTerms.trim()
@@ -2449,6 +2470,7 @@ const BudgetsPage = () => {
         paymentTerms: budget.paymentTerms || DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
         status: budget.status,
         totalPrice: budget.finalPrice,
+        profitMargin: normalizeMarginPercentage(budget.profitMargin),
         costsApplicableValue: Math.max(
           0,
           Number(budget.costsApplicableValue) || 0,
@@ -2699,6 +2721,17 @@ const BudgetsPage = () => {
       return;
     }
 
+    const normalizedDetailProfitMargin = Number(detailForm.profitMargin);
+
+    if (
+      !Number.isFinite(normalizedDetailProfitMargin) ||
+      normalizedDetailProfitMargin < 0 ||
+      normalizedDetailProfitMargin > 100
+    ) {
+      setDetailError("A margem de lucro deve estar entre 0 e 100.");
+      return;
+    }
+
     const departmentErrors = validateExpenseDepartments(
       detailForm.expenseDepartments,
     );
@@ -2744,6 +2777,8 @@ const BudgetsPage = () => {
             : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
           status: detailForm.status,
           totalPrice: totalPriceToPersist,
+          finalPrice: totalPriceToPersist,
+          profitMargin: normalizedDetailProfitMargin,
           costsApplicableValue: Math.max(
             0,
             Number(detailForm.costsApplicableValue) || 0,
@@ -4380,6 +4415,41 @@ const BudgetsPage = () => {
               )}
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <FormField
+                label="Margem de lucro (%)"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={form.profitMargin}
+                onChange={(e) =>
+                  setForm((current) => ({
+                    ...current,
+                    profitMargin: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+              />
+              <FormField
+                label="Custo (R$)"
+                type="number"
+                value={Number(totalCostWithExpenses.toFixed(2))}
+                disabled
+              />
+              <FormField
+                label="Lucro (R$)"
+                type="number"
+                value={Number(profitValueWithExpenses.toFixed(2))}
+                disabled
+              />
+              <FormField
+                label="Preço final (R$)"
+                type="number"
+                value={Number(finalPriceWithExpenses.toFixed(2))}
+                disabled
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FormField
                 label="Custo aplicavel (R$)"
@@ -4803,7 +4873,7 @@ const BudgetsPage = () => {
               placeholder={PROPOSAL_DESCRIPTION_PLACEHOLDER}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 label="Prazo estimado de entrega (dias úteis previstos)"
                 type="number"
@@ -4816,6 +4886,37 @@ const BudgetsPage = () => {
                     estimatedDeliveryBusinessDays: e.target.value,
                   }))
                 }
+              />
+
+              <FormField
+                label="Margem de lucro (%)"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={detailForm.profitMargin}
+                onChange={(e) =>
+                  setDetailForm((current) => ({
+                    ...current,
+                    profitMargin: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <FormField
+                label="Custo (R$)"
+                type="number"
+                value={Number(detailTotalCostWithExpenses.toFixed(2))}
+                disabled
+              />
+
+              <FormField
+                label="Lucro (R$)"
+                type="number"
+                value={Number(detailProfitValueWithExpenses.toFixed(2))}
+                disabled
               />
 
               <FormField
@@ -4836,7 +4937,7 @@ const BudgetsPage = () => {
               />
 
               <FormField
-                label="Preço Total (R$)"
+                label="Preço final (R$)"
                 type="number"
                 min={0}
                 step="0.01"

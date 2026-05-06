@@ -45,6 +45,20 @@ export interface EmployeeProduction {
   orderId: string | null;
 }
 
+export interface ApprovedBudgetForProduction {
+  id: string;
+  clientName: string;
+  description: string;
+  category: string;
+  totalCost?: number;
+  costsApplicableValue?: number;
+  profitValue?: number;
+  profitMargin?: number;
+  profitMarginPercentage?: number;
+  finalPrice?: number;
+  totalPrice?: number;
+}
+
 export interface ProductionImage {
   id: string;
   productionId: string;
@@ -270,6 +284,76 @@ const normalizeStatus = (status: unknown): ProductionStatus => {
 const normalizeDeliveryDate = (value: unknown) => {
   const raw = toStringSafe(value, "");
   return raw.includes("T") ? raw.split("T")[0] : raw;
+};
+
+const normalizeProfitMarginPercentage = (
+  percentageValue: unknown,
+  marginValue: unknown,
+) => {
+  const fromPercentage = toOptionalNumber(percentageValue);
+
+  if (fromPercentage !== null) {
+    return fromPercentage;
+  }
+
+  const fromMargin = toOptionalNumber(marginValue);
+
+  if (fromMargin === null) {
+    return null;
+  }
+
+  return fromMargin <= 1 ? fromMargin * 100 : fromMargin;
+};
+
+const mapApprovedBudgetForProduction = (
+  value: unknown,
+): ApprovedBudgetForProduction | null => {
+  const item = toRecord(value);
+
+  if (!item) {
+    return null;
+  }
+
+  const id = toStringSafe(item.id, "").trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const totalPrice = toOptionalNumber(item.totalPrice ?? item.total_price);
+  const finalPrice =
+    toOptionalNumber(item.finalPrice ?? item.final_price) ?? totalPrice;
+
+  return {
+    id,
+    clientName: toStringSafe(
+      item.clientName ?? item.client_name,
+      "Cliente não informado",
+    ),
+    description: toStringSafe(item.description, ""),
+    category: toStringSafe(item.category, "arquitetonico"),
+    totalCost:
+      toOptionalNumber(item.totalCost ?? item.total_cost ?? item.cost) ??
+      undefined,
+    costsApplicableValue:
+      toOptionalNumber(
+        item.costsApplicableValue ?? item.costs_applicable_value,
+      ) ?? undefined,
+    profitValue:
+      toOptionalNumber(item.profitValue ?? item.profit_value ?? item.profit) ??
+      undefined,
+    profitMargin:
+      toOptionalNumber(
+        item.profitMargin ?? item.profit_margin ?? item.margin,
+      ) ?? undefined,
+    profitMarginPercentage:
+      normalizeProfitMarginPercentage(
+        item.profitMarginPercentage ?? item.profit_margin_percentage,
+        item.profitMargin ?? item.profit_margin ?? item.margin,
+      ) ?? undefined,
+    finalPrice: finalPrice ?? undefined,
+    totalPrice: totalPrice ?? undefined,
+  };
 };
 
 const mapStockDetail = (
@@ -1049,6 +1133,21 @@ export const listProductions = async (params?: ListProductionsParams) => {
   return parseCollection<unknown>(payload)
     .map(mapProduction)
     .filter((item): item is EmployeeProduction => Boolean(item));
+};
+
+export const listApprovedBudgetsForProduction = async () => {
+  const payload = await request<unknown>("/production/approved-budgets");
+  const data = unwrapDataEnvelope(payload);
+
+  if (Array.isArray(data)) {
+    return data
+      .map(mapApprovedBudgetForProduction)
+      .filter((item): item is ApprovedBudgetForProduction => Boolean(item));
+  }
+
+  return parseCollection<unknown>(payload)
+    .map(mapApprovedBudgetForProduction)
+    .filter((item): item is ApprovedBudgetForProduction => Boolean(item));
 };
 
 export const listProductionsByEmployee = async (employeeId: string) => {

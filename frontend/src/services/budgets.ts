@@ -65,9 +65,11 @@ export interface Budget {
   remainingValidityBusinessDays?: number | null;
   isExpired?: boolean;
   totalPrice: number;
+  finalPrice?: number;
   totalCost?: number;
   laborCost?: number;
   profitMargin?: number;
+  profitMarginPercentage?: number;
   profitValue?: number;
   notes: string | null;
   paymentTerms?: string | null;
@@ -90,6 +92,8 @@ export interface CreateBudgetInput {
   deliveryDate: string | null;
   estimatedDeliveryBusinessDays?: number | null;
   totalPrice: number;
+  finalPrice?: number;
+  profitMargin?: number;
   costsApplicableValue?: number;
   notes: string | null;
   paymentTerms?: string | null;
@@ -201,6 +205,25 @@ const toOptionalMargin = (value: unknown) => {
   }
 
   return numeric;
+};
+
+const toMarginPercentage = (
+  percentageValue: unknown,
+  decimalValue: unknown,
+) => {
+  const fromPercentage = toOptionalNumber(percentageValue);
+
+  if (fromPercentage !== undefined) {
+    return fromPercentage;
+  }
+
+  const decimal = toOptionalMargin(decimalValue);
+
+  if (decimal === undefined) {
+    return undefined;
+  }
+
+  return decimal <= 1 ? decimal * 100 : decimal;
 };
 
 const mapApproveBudgetDetail = (
@@ -523,6 +546,23 @@ const normalizeBudget = (value: unknown): Budget | null => {
             toRecord(item.financialSummary)?.profit,
         )
       : undefined);
+    const profitMarginPercentage = toMarginPercentage(
+      item.profitMarginPercentage ??
+        item.profit_margin_percentage ??
+        toRecord(item.financialSummary)?.profitMarginPercentage ??
+        toRecord(item.financialSummary)?.profit_margin_percentage,
+      item.profitMargin ??
+        item.profit_margin ??
+        item.margin ??
+        item.marginPercent ??
+        item.margin_percent ??
+        toRecord(item.financialSummary)?.profitMargin ??
+        toRecord(item.financialSummary)?.profit_margin ??
+        toRecord(item.financialSummary)?.margin,
+    );
+    const finalPrice = toOptionalNumber(
+      item.finalPrice ?? item.final_price ?? item.totalPrice ?? item.total_price,
+    );
 
   return {
     id,
@@ -552,9 +592,11 @@ const normalizeBudget = (value: unknown): Budget | null => {
     ),
     isExpired: toOptionalBoolean(item.isExpired ?? item.is_expired),
     totalPrice: toNumberSafe(item.totalPrice ?? item.total_price, 0),
+    finalPrice,
     totalCost,
     laborCost,
     profitMargin,
+    profitMarginPercentage,
     profitValue,
     notes: toNullableString(toStringSafe(item.notes, "")),
     paymentTerms: toNullableString(
@@ -673,7 +715,29 @@ const toBudgetPayload = (
   }
 
   if (!partial || input.totalPrice !== undefined) {
-    payload.totalPrice = toNumberSafe(input.totalPrice, 0);
+    const normalizedTotalPrice = toNumberSafe(input.totalPrice, 0);
+    payload.totalPrice = normalizedTotalPrice;
+    payload.finalPrice = normalizedTotalPrice;
+  }
+
+  if (!partial || input.finalPrice !== undefined) {
+    const normalizedFinalPrice = toNumberSafe(
+      input.finalPrice ?? input.totalPrice,
+      0,
+    );
+    payload.finalPrice = normalizedFinalPrice;
+    if (partial && input.totalPrice === undefined) {
+      payload.totalPrice = normalizedFinalPrice;
+    }
+  }
+
+  if (!partial || input.profitMargin !== undefined) {
+    const normalizedProfitMargin = Math.max(
+      0,
+      Math.min(100, toNumberSafe(input.profitMargin, 0)),
+    );
+    payload.profitMargin = normalizedProfitMargin;
+    payload.profitMarginPercentage = normalizedProfitMargin;
   }
 
   if (!partial || input.costsApplicableValue !== undefined) {

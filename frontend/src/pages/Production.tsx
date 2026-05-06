@@ -10,8 +10,8 @@ import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
-import { Budget, listBudgets } from "@/services/budgets";
 import {
+  ApprovedBudgetForProduction,
   AdvanceProductionStatusInput,
   advanceProductionStatus,
   CompleteProductionError,
@@ -25,6 +25,7 @@ import {
   createProduction,
   formatStockDetailMessage,
   listProductionImages,
+  listApprovedBudgetsForProduction,
   listProductionStatusOptions,
   listProductions,
   replaceProductionStatuses,
@@ -246,7 +247,7 @@ const ProductionPage = () => {
   const [clientsCatalog, setClientsCatalog] = useState<Client[]>([]);
   const [productsCatalog, setProductsCatalog] = useState<Product[]>([]);
   const [approvedBudgetsCatalog, setApprovedBudgetsCatalog] = useState<
-    Budget[]
+    ApprovedBudgetForProduction[]
   >([]);
   const [statusOptions, setStatusOptions] = useState<ProductionStatusOption[]>(
     [],
@@ -324,87 +325,50 @@ const ProductionPage = () => {
     );
   };
 
-  const resolveBudgetApplicableCost = (budget: Budget) => {
-    const fromSummary = Number(
-      budget.financialSummary?.costsApplicableValue ??
-        budget.costsApplicableValue ??
-        0,
-    );
+  const resolveBudgetApplicableCost = (budget: ApprovedBudgetForProduction) =>
+    Math.max(0, Number(budget.costsApplicableValue) || 0);
 
-    if (Number.isFinite(fromSummary) && fromSummary > 0) {
-      return Math.max(0, fromSummary);
+  const resolveBudgetTotalCost = (budget: ApprovedBudgetForProduction) => {
+    const totalCost = Number(budget.totalCost);
+
+    if (Number.isFinite(totalCost)) {
+      return Math.max(0, totalCost);
     }
 
-    return Math.max(
-      0,
-      (budget.applicableCosts || []).reduce(
-        (sum, cost) => sum + (Number(cost.amount) || 0),
-        0,
-      ),
-    );
-  };
+    const finalPrice = Number(budget.finalPrice ?? budget.totalPrice);
+    const profitValue = Number(budget.profitValue);
 
-  const hasBudgetMaterialValues = (budget: Budget) =>
-    (budget.materials || []).some(
-      (material) =>
-        (Number(material.quantity) || 0) > 0 ||
-        (Number(material.unitPrice) || 0) > 0,
-    );
-
-  const resolveBudgetTotalCost = (budget: Budget) => {
-    if (!hasBudgetMaterialValues(budget)) {
-      const apiTotalCost = Number(budget.totalCost);
-
-      if (Number.isFinite(apiTotalCost) && apiTotalCost > 0) {
-        return Math.max(0, apiTotalCost);
-      }
-
-      const apiTotalPrice = Number(budget.totalPrice);
-      const apiProfitValue = Number(budget.profitValue);
-
-      if (Number.isFinite(apiTotalPrice) && Number.isFinite(apiProfitValue)) {
-        return Math.max(0, apiTotalPrice - apiProfitValue);
-      }
-
-      return 0;
+    if (Number.isFinite(finalPrice) && Number.isFinite(profitValue)) {
+      return Math.max(0, finalPrice - profitValue);
     }
 
-    // Custo = soma dos R$ Unid (preço unitário) de cada material
-    return (budget.materials || []).reduce(
-      (sum, material) => sum + (Number(material.unitPrice) || 0),
-      0,
-    );
+    return 0;
   };
 
-  const resolveBudgetFinalPrice = (budget: Budget) => {
-    if (!hasBudgetMaterialValues(budget)) {
-      const apiTotalPrice = Number(budget.totalPrice);
+  const resolveBudgetFinalPrice = (budget: ApprovedBudgetForProduction) => {
+    const finalPrice = Number(budget.finalPrice ?? budget.totalPrice);
 
-      if (Number.isFinite(apiTotalPrice) && apiTotalPrice > 0) {
-        return Math.max(0, apiTotalPrice);
-      }
-
-      const apiTotalCost = Number(budget.totalCost);
-      const apiProfitValue = Number(budget.profitValue);
-
-      if (Number.isFinite(apiTotalCost) && Number.isFinite(apiProfitValue)) {
-        return Math.max(0, apiTotalCost + apiProfitValue);
-      }
-
-      return 0;
+    if (Number.isFinite(finalPrice)) {
+      return Math.max(0, finalPrice);
     }
 
-    // Preço final = soma de R$ TOTAL (qtd × R$ Unid) de cada material
-    return (budget.materials || []).reduce(
-      (sum, material) =>
-        sum +
-        (Number(material.quantity) || 0) * (Number(material.unitPrice) || 0),
-      0,
-    );
+    const totalCost = Number(budget.totalCost);
+    const profitValue = Number(budget.profitValue);
+
+    if (Number.isFinite(totalCost) && Number.isFinite(profitValue)) {
+      return Math.max(0, totalCost + profitValue);
+    }
+
+    return 0;
   };
 
-  const resolveBudgetProfit = (budget: Budget) => {
-    // Lucro = Preço final - Custo total
+  const resolveBudgetProfit = (budget: ApprovedBudgetForProduction) => {
+    const profitValue = Number(budget.profitValue);
+
+    if (Number.isFinite(profitValue)) {
+      return profitValue;
+    }
+
     return resolveBudgetFinalPrice(budget) - resolveBudgetTotalCost(budget);
   };
 
@@ -518,10 +482,8 @@ const ProductionPage = () => {
     setBudgetsError("");
 
     try {
-      const budgets = await listBudgets();
-      setApprovedBudgetsCatalog(
-        budgets.filter((budget) => budget.status === "approved"),
-      );
+      const budgets = await listApprovedBudgetsForProduction();
+      setApprovedBudgetsCatalog(budgets);
     } catch (error) {
       setApprovedBudgetsCatalog([]);
       const message =
@@ -603,48 +565,14 @@ const ProductionPage = () => {
     }
 
     const linkedClient = findClientByName(selectedBudget.clientName);
-    const unresolvedMaterials: string[] = [];
-
-    const mappedMaterials = selectedBudget.materials
-      .map((material) => {
-        const linkedProduct = material.productId
-          ? productsCatalog.find((product) => product.id === material.productId)
-          : findProductByName(material.productName);
-
-        if (!linkedProduct) {
-          unresolvedMaterials.push(material.productName);
-          return null;
-        }
-
-        return {
-          productId: linkedProduct.id,
-          productName: linkedProduct.name,
-          quantity: Number(material.quantity) || 0,
-          unit: material.unit || "unidade",
-        };
-      })
-      .filter(
-        (material): material is ProductionMaterial =>
-          Boolean(material) && material.quantity > 0,
-      );
 
     setForm((current) => ({
       ...current,
       budgetId,
       clientId: linkedClient?.id || current.clientId,
       description: selectedBudget.description || current.description,
-      deliveryDate:
-        normalizeDateOnly(selectedBudget.deliveryDate) || current.deliveryDate,
       initialCost: resolveBudgetTotalCost(selectedBudget),
-      materials: mappedMaterials,
     }));
-
-    if (unresolvedMaterials.length > 0) {
-      setFormError(
-        `Alguns materiais do orcamento nao foram encontrados no catalogo de produtos e nao puderam ser vinculados: ${unresolvedMaterials.join(", ")}.`,
-      );
-      return;
-    }
 
     setFormError("");
   };
@@ -1569,7 +1497,7 @@ const ProductionPage = () => {
                   onChange={(e) => applyApprovedBudgetToForm(e.target.value)}
                   options={approvedBudgetsCatalog.map((budget) => ({
                     value: budget.id,
-                    label: `#${budget.id} - ${budget.clientName} - ${formatCurrency(Number(budget.totalPrice) || 0)}`,
+                    label: `#${budget.id} - ${budget.clientName} - ${formatCurrency(Number(budget.finalPrice ?? budget.totalPrice) || 0)}`,
                   }))}
                 />
               </div>
