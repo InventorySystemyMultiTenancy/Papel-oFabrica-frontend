@@ -32,7 +32,7 @@ export function DashboardLayout({
     <div className="relative isolate flex min-h-screen text-foreground overflow-hidden">
       <div
         className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center"
-        style={{ backgroundImage: "url('/loginimage.jpg')" }}
+        style={{ backgroundImage: "url('/loginimage2.png')" }}
       />
       <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-white/80 via-blue-100/72 to-orange-50/70" />
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_0%_0%,rgba(37,99,235,0.22),transparent_42%),radial-gradient(circle_at_100%_100%,rgba(249,115,22,0.18),transparent_40%)]" />

@@ -48,7 +48,7 @@ const LoginPage = () => {
       {/* Imagem de fundo */}
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: "url('/loginimage.jpg')" }}
+        style={{ backgroundImage: "url('/loginimage.png')" }}
       />
       {/* Degradê por cima deixando opaca */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/80 via-blue-100/72 to-orange-50/70" />
