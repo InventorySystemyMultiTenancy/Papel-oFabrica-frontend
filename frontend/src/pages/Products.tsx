@@ -21,17 +21,21 @@ interface ProductFormState {
   stockQuantity: number;
   lowStockAlertQuantity: number;
   isPaperboardMaterial: boolean;
-  gramatura: string;
-  sheetsPerBundle: string;
+  length: string;
+  width: string;
+  height: string;
+  quality: "CMCB" | "CMCBC";
 }
 
 const emptyForm: ProductFormState = {
   name: "",
   stockQuantity: 0,
   lowStockAlertQuantity: 0,
-  isPaperboardMaterial: false,
-  gramatura: "",
-  sheetsPerBundle: "",
+  isPaperboardMaterial: true,
+  length: "",
+  width: "",
+  height: "",
+  quality: "CMCBC",
 };
 
 const formatDateTime = (value: string) => {
@@ -173,10 +177,11 @@ const ProductsPage = () => {
       name: product.name,
       stockQuantity: product.stockQuantity,
       lowStockAlertQuantity: product.lowStockAlertQuantity,
-      isPaperboardMaterial: product.isPaperboardMaterial ?? false,
-      gramatura: product.gramatura != null ? String(product.gramatura) : "",
-      sheetsPerBundle:
-        product.sheetsPerBundle != null ? String(product.sheetsPerBundle) : "",
+      isPaperboardMaterial: true,
+      length: product.length != null ? String(product.length) : "",
+      width: product.width != null ? String(product.width) : "",
+      height: product.height != null ? String(product.height) : "",
+      quality: product.quality ?? "CMCBC",
     });
     setFormError("");
     setModalOpen(true);
@@ -225,8 +230,12 @@ const ProductsPage = () => {
       return;
     }
 
-    if (form.isPaperboardMaterial && !form.gramatura.trim()) {
-      setFormError("Gramatura é obrigatória para matéria-prima de papelão.");
+    if (
+      (!form.length.trim() || !form.width.trim() || !form.height.trim())
+    ) {
+      setFormError(
+        "Comprimento, largura e altura são obrigatórios para papelão.",
+      );
       return;
     }
 
@@ -235,15 +244,11 @@ const ProductsPage = () => {
 
     try {
       const paperboardFields = {
-        isPaperboardMaterial: form.isPaperboardMaterial,
-        gramatura:
-          form.isPaperboardMaterial && form.gramatura.trim()
-            ? Number(form.gramatura)
-            : null,
-        sheetsPerBundle:
-          form.isPaperboardMaterial && form.sheetsPerBundle.trim()
-            ? Number(form.sheetsPerBundle)
-            : null,
+        isPaperboardMaterial: true,
+        quality: form.quality,
+        length: form.length.trim() ? Number(form.length) : null,
+        width: form.width.trim() ? Number(form.width) : null,
+        height: form.height.trim() ? Number(form.height) : null,
       };
 
       if (editing) {
@@ -283,7 +288,13 @@ const ProductsPage = () => {
           {item.name}
           {item.isPaperboardMaterial && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400">
-              Papelão{item.gramatura ? ` ${item.gramatura}g` : ""}
+              Papelão
+              {item.length && item.width && item.height
+                ? ` ${item.length}x${item.width}x${item.height}mm`
+                : item.gramatura
+                  ? ` ${item.gramatura}g`
+                  : ""}
+              {item.quality ? ` ${item.quality}` : ""}
             </span>
           )}
         </span>
@@ -487,52 +498,57 @@ const ProductsPage = () => {
 
           {/* Paperboard fields */}
           <div className="border border-border rounded p-3 space-y-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.isPaperboardMaterial}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    isPaperboardMaterial: e.target.checked,
-                    gramatura: "",
-                    sheetsPerBundle: "",
-                  }))
-                }
-                className="rounded border-border"
-              />
-              <span className="text-sm font-medium">
-                É matéria-prima de papelão
-              </span>
-            </label>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+              CLA do produto
+            </p>
 
-            {form.isPaperboardMaterial && (
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1">
                 <FormField
-                  label="Gramatura (g/m²) *"
-                  type="number"
-                  min={0}
-                  value={form.gramatura}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, gramatura: e.target.value }))
-                  }
-                  placeholder="Ex.: 200"
-                />
-                <FormField
-                  label="Folhas por Fardo"
-                  type="number"
-                  min={0}
-                  value={form.sheetsPerBundle}
+                  label="Qualidade *"
+                  as="select"
+                  value={form.quality}
+                  options={[
+                    { value: "CMCB", label: "CMCB" },
+                    { value: "CMCBC", label: "CMCBC" },
+                  ]}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      sheetsPerBundle: e.target.value,
+                      quality: e.target.value === "CMCB" ? "CMCB" : "CMCBC",
                     }))
                   }
-                  placeholder="Ex.: 500"
+                />
+                <FormField
+                  label="Comprimento (mm) *"
+                  type="number"
+                  min={0}
+                  value={form.length}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, length: e.target.value }))
+                  }
+                  placeholder="Ex.: 460"
+                />
+                <FormField
+                  label="Largura (mm) *"
+                  type="number"
+                  min={0}
+                  value={form.width}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, width: e.target.value }))
+                  }
+                  placeholder="Ex.: 250"
+                />
+                <FormField
+                  label="Altura (mm) *"
+                  type="number"
+                  min={0}
+                  value={form.height}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, height: e.target.value }))
+                  }
+                  placeholder="Ex.: 198"
                 />
               </div>
-            )}
           </div>
 
           {formError && <p className="text-sm text-destructive">{formError}</p>}

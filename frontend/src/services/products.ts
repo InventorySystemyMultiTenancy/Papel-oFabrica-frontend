@@ -9,6 +9,10 @@ export interface Product {
   isPaperboardMaterial: boolean;
   gramatura: number | null;
   sheetsPerBundle: number | null;
+  length: number | null;
+  width: number | null;
+  height: number | null;
+  quality: "CMCB" | "CMCBC" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -20,6 +24,10 @@ export interface CreateProductInput {
   isPaperboardMaterial?: boolean;
   gramatura?: number | null;
   sheetsPerBundle?: number | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  quality?: "CMCB" | "CMCBC" | null;
 }
 
 export interface UpdateProductInput {
@@ -28,6 +36,10 @@ export interface UpdateProductInput {
   isPaperboardMaterial?: boolean;
   gramatura?: number | null;
   sheetsPerBundle?: number | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  quality?: "CMCB" | "CMCBC" | null;
 }
 
 const toRecord = (value: unknown): Record<string, unknown> | null => {
@@ -78,6 +90,12 @@ const normalizeProduct = (value: unknown): Product | null => {
   const gramatura = gramaturaRaw !== null && gramaturaRaw !== undefined ? toNumberSafe(gramaturaRaw) : null;
   const sheetsRaw = item.sheetsPerBundle;
   const sheetsPerBundle = sheetsRaw !== null && sheetsRaw !== undefined ? toNumberSafe(sheetsRaw) : null;
+  const lengthRaw = item.length ?? item.comprimento ?? item.comprimentoMm ?? item.comprimento_mm;
+  const widthRaw = item.width ?? item.largura ?? item.larguraMm ?? item.largura_mm;
+  const heightRaw = item.height ?? item.altura ?? item.alturaMm ?? item.altura_mm;
+  const qualityRaw = item.quality ?? item.qualidade;
+  const quality: Product["quality"] =
+    qualityRaw === "CMCB" || qualityRaw === "CMCBC" ? qualityRaw : null;
 
   return {
     id,
@@ -88,6 +106,10 @@ const normalizeProduct = (value: unknown): Product | null => {
     isPaperboardMaterial,
     gramatura,
     sheetsPerBundle,
+    length: lengthRaw !== null && lengthRaw !== undefined ? toNumberSafe(lengthRaw) : null,
+    width: widthRaw !== null && widthRaw !== undefined ? toNumberSafe(widthRaw) : null,
+    height: heightRaw !== null && heightRaw !== undefined ? toNumberSafe(heightRaw) : null,
+    quality,
     createdAt: toStringSafe(item.createdAt ?? item.created_at, ""),
     updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
   };
@@ -127,6 +149,10 @@ const toCreatePayload = (input: CreateProductInput) => ({
   isPaperboardMaterial: input.isPaperboardMaterial ?? false,
   gramatura: input.gramatura ?? null,
   sheetsPerBundle: input.sheetsPerBundle ?? null,
+  length: input.length ?? null,
+  width: input.width ?? null,
+  height: input.height ?? null,
+  quality: input.quality ?? null,
 });
 
 const toUpdatePayload = (input: UpdateProductInput) => ({
@@ -138,6 +164,10 @@ const toUpdatePayload = (input: UpdateProductInput) => ({
   isPaperboardMaterial: input.isPaperboardMaterial ?? false,
   gramatura: input.gramatura ?? null,
   sheetsPerBundle: input.sheetsPerBundle ?? null,
+  length: input.length ?? null,
+  width: input.width ?? null,
+  height: input.height ?? null,
+  quality: input.quality ?? null,
 });
 
 const buildProductsPath = (search?: string) => {

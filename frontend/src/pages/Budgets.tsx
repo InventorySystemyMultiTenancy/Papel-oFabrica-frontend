@@ -167,10 +167,7 @@ const DEFAULT_BUDGET_PDF_PAYMENT_TERMS = [
 ].join("\n");
 
 const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 10;
-const PAPERBOARD_MATERIAL_COST_FACTOR = 0.0042;
-const PAPERBOARD_DEFAULT_CUTTING_COST_PER_KG = 0.15;
-const PAPERBOARD_DEFAULT_CREASING_COST_PER_KG = 0.08;
-const PAPERBOARD_DEFAULT_MARKUP_PERCENTAGE = 35;
+const PAPERBOARD_PRICE_PER_KG = 14;
 
 const PAYMENT_TERMS_PRESETS = [
   "Ato",
@@ -277,10 +274,57 @@ interface PaperboardPreview {
   suggestedPrice: number;
   totalSheets: number;
   totalBundles: number;
+  unitWeightKg: number;
 }
 
+type PaperboardQuality = "CMCB" | "CMCBC";
+
+type PaperboardFormInput = PaperboardConfigInput & {
+  quality?: PaperboardQuality;
+};
+
+const PAPERBOARD_QUALITY_GRAMMAGE: Record<PaperboardQuality, number> = {
+  CMCB: 511,
+  CMCBC: 651,
+};
+
+const normalizePaperboardGrammage = (gramatura: number) =>
+  gramatura > 10 ? gramatura / 1000 : gramatura;
+
+const calculatePaperboardBlankFromSpreadsheet = (
+  length: number,
+  width: number,
+  height: number,
+  quality: PaperboardQuality = "CMCBC",
+) => {
+  const isCmcbc = quality === "CMCBC";
+  const printerWidthMm =
+    width +
+    (isCmcbc ? 6 : 2) +
+    length +
+    (isCmcbc ? 7 : 3) +
+    width +
+    (isCmcbc ? 7 : 3) +
+    length +
+    (isCmcbc ? 6 : 2) +
+    (isCmcbc ? 40 : 35);
+  const scorerHeightMm =
+    width / 2 +
+    (isCmcbc ? 6 : 2) +
+    height +
+    (isCmcbc ? 12 : 5) +
+    width / 2 +
+    (isCmcbc ? 6 : 2);
+
+  return {
+    printerWidthMm,
+    scorerHeightMm,
+    areaM2: (printerWidthMm / 1000) * (scorerHeightMm / 1000),
+  };
+};
+
 const calculatePaperboardPreview = (
-  input: PaperboardConfigInput,
+  input: PaperboardFormInput,
 ): PaperboardPreview | null => {
   const length = Number(input.length);
   const width = Number(input.width);
@@ -303,64 +347,55 @@ const calculatePaperboardPreview = (
     return null;
   }
 
-  const areaCm2 = length * width;
   const sheetsPerBundle =
     input.sheetsPerBundle && input.sheetsPerBundle > 0
       ? input.sheetsPerBundle
       : null;
-  const sheetUnitCost =
-    input.sheetUnitCost && input.sheetUnitCost > 0 ? input.sheetUnitCost : null;
-  const cuttingCostPerKg =
-    input.cuttingCostPerKg ?? PAPERBOARD_DEFAULT_CUTTING_COST_PER_KG;
-  const creasingCostPerKg =
-    input.creasingCostPerKg ?? PAPERBOARD_DEFAULT_CREASING_COST_PER_KG;
-  const lossPercentage = Math.max(0, Number(input.lossPercentage ?? 0));
-  const markupPercentage = Math.max(
-    0,
-    Number(input.markupPercentage ?? PAPERBOARD_DEFAULT_MARKUP_PERCENTAGE),
-  );
-  const clicheCost = Number(input.clicheCost ?? 0);
-  const clichePrice = Number(input.clichePrice ?? 0);
 
-  const packageArea = Math.max(
-    (length * width + 2 * height * (length + width)) / 10000,
-    areaCm2 / 10000,
+  const { areaM2 } = calculatePaperboardBlankFromSpreadsheet(
+    length,
+    width,
+    height,
+    input.quality,
   );
-  const lossFactor = input.usesFullSheet ? 1 + lossPercentage / 100 : 1;
-  const totalArea = packageArea * quantity * lossFactor;
-
-  const sheetArea = Math.max(areaCm2 / 10000, 0.0001);
-  const totalSheets = Math.max(totalArea / sheetArea, 0);
+  const gramaturaKgM2 = normalizePaperboardGrammage(gramatura);
+  const unitWeightKg = areaM2 * gramaturaKgM2;
+  const unitMaterialCost = unitWeightKg * PAPERBOARD_PRICE_PER_KG;
+  const totalSheets = Math.max(quantity, 0);
   const totalBundles =
     sheetsPerBundle && sheetsPerBundle > 0
       ? Math.ceil(totalSheets / sheetsPerBundle)
       : 0;
 
-  const baseMaterialCost =
-    totalArea * gramatura * PAPERBOARD_MATERIAL_COST_FACTOR;
-  const materialCost =
-    sheetUnitCost && sheetUnitCost > 0
-      ? totalSheets * sheetUnitCost
-      : baseMaterialCost;
-  const cuttingCost = input.outsourcedCut ? quantity * cuttingCostPerKg : 0;
-  const creasingCost = quantity * creasingCostPerKg;
-  const lossCost = input.usesFullSheet
-    ? materialCost * (lossPercentage / 100)
-    : 0;
-  const clicheAppliedCost = input.isFirstPurchase ? clicheCost : 0;
-
-  const estimatedCost =
-    materialCost + cuttingCost + creasingCost + lossCost + clicheAppliedCost;
-  const suggestedPrice =
-    estimatedCost * (1 + markupPercentage / 100) +
-    (input.isFirstPurchase ? clichePrice : 0);
-
   return {
-    estimatedCost,
-    suggestedPrice,
+    estimatedCost: unitMaterialCost,
+    suggestedPrice: unitMaterialCost,
     totalSheets,
     totalBundles,
+    unitWeightKg,
   };
+};
+
+const calculatePaperboardUnitPrice = (
+  length: number,
+  width: number,
+  height: number,
+  quality: PaperboardQuality,
+) =>
+  calculatePaperboardPreview({
+    length,
+    width,
+    height,
+    quality,
+    gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
+    quantity: 1,
+  })?.suggestedPrice ?? 0;
+
+const toPaperboardConfigInput = (
+  input: PaperboardFormInput,
+): PaperboardConfigInput => {
+  const { quality: _quality, ...paperboardInput } = input;
+  return paperboardInput;
 };
 
 const normalizeDateOnly = (value: string | null | undefined) => {
@@ -705,7 +740,39 @@ const createEmptyMaterialInput = (mode: MaterialInputMode = "existing") => ({
   quantity: 1,
   unit: "unidade",
   unitPrice: 0,
+  isPaperboardMaterial: false,
+  quality: "CMCBC" as PaperboardQuality,
+  length: 0,
+  width: 0,
+  height: 0,
 });
+
+const resolveMaterialInputUnitPrice = (
+  item: ReturnType<typeof createEmptyMaterialInput>,
+  product?: Product,
+) => {
+  const quality =
+    product?.quality === "CMCB" || product?.quality === "CMCBC"
+      ? product.quality
+      : item.quality === "CMCB"
+        ? "CMCB"
+        : "CMCBC";
+  const length = Number(product?.length ?? item.length);
+  const width = Number(product?.width ?? item.width);
+  const height = Number(product?.height ?? item.height);
+  const shouldCalculateCla =
+    Boolean(product?.isPaperboardMaterial) || Boolean(item.isPaperboardMaterial);
+
+  if (shouldCalculateCla) {
+    if (length <= 0 || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return calculatePaperboardUnitPrice(length, width, height, quality);
+  }
+
+  return Number(item.unitPrice);
+};
 
 const createEmptyExpenseDepartment = (): BudgetExpenseDepartmentRow => ({
   expenseDepartmentId: undefined,
@@ -1085,7 +1152,7 @@ const BudgetsPage = () => {
   const [isLoadingPaperboard, setIsLoadingPaperboard] = useState(false);
   const [isSavingPaperboard, setIsSavingPaperboard] = useState(false);
   const [paperboardError, setPaperboardError] = useState("");
-  const [paperboardForm, setPaperboardForm] = useState<PaperboardConfigInput>({
+  const [paperboardForm, setPaperboardForm] = useState<PaperboardFormInput>({
     length: 0,
     width: 0,
     height: 0,
@@ -1116,12 +1183,13 @@ const BudgetsPage = () => {
   const [detailNewItem, setDetailNewItem] = useState(createEmptyMaterialInput);
   // CLA mode for creation
   const [createUseCla, setCreateUseCla] = useState(false);
-  const [createClaForm, setCreateClaForm] = useState<PaperboardConfigInput>({
+  const [createClaForm, setCreateClaForm] = useState<PaperboardFormInput>({
     length: 0,
     width: 0,
     height: 0,
-    gramatura: 0,
+    gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
     quantity: 0,
+    quality: "CMCBC",
     sheetsPerBundle: undefined,
     sheetUnitCost: undefined,
     cuttingCostPerKg: undefined,
@@ -1573,7 +1641,6 @@ const BudgetsPage = () => {
 
   const addItem = () => {
     const quantity = Number(newItem.quantity);
-    const unitPrice = Number(newItem.unitPrice);
     const unit = newItem.unit.trim() || "unidade";
     const isExistingMode = newItem.mode === "existing";
 
@@ -1583,6 +1650,7 @@ const BudgetsPage = () => {
     const productName = isExistingMode
       ? product?.name || ""
       : newItem.productName.trim();
+    const unitPrice = resolveMaterialInputUnitPrice(newItem, product);
 
     if (!productName) {
       setFormError(
@@ -1595,6 +1663,11 @@ const BudgetsPage = () => {
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setFormError("Informe uma quantidade valida para o material.");
+      return;
+    }
+
+    if (unitPrice === null) {
+      setFormError("Informe C, L e A validos para calcular o material CLA.");
       return;
     }
 
@@ -1623,7 +1696,6 @@ const BudgetsPage = () => {
     }
 
     const quantity = Number(detailNewItem.quantity);
-    const unitPrice = Number(detailNewItem.unitPrice);
     const unit = detailNewItem.unit.trim() || "unidade";
     const isExistingMode = detailNewItem.mode === "existing";
 
@@ -1633,6 +1705,7 @@ const BudgetsPage = () => {
     const productName = isExistingMode
       ? product?.name || ""
       : detailNewItem.productName.trim();
+    const unitPrice = resolveMaterialInputUnitPrice(detailNewItem, product);
 
     if (!productName) {
       setDetailError(
@@ -1645,6 +1718,11 @@ const BudgetsPage = () => {
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setDetailError("Informe uma quantidade valida para o material.");
+      return;
+    }
+
+    if (unitPrice === null) {
+      setDetailError("Informe C, L e A validos para calcular o material CLA.");
       return;
     }
 
@@ -2186,7 +2264,9 @@ const BudgetsPage = () => {
       ? createClaPreview.suggestedPrice * (createClaForm.quantity || 1)
       : materialCost;
   const totalCostWithExpenses = createBaseTotalForMargin;
-  const profitValueWithExpenses = totalCostWithExpenses * marginDecimal;
+  const profitValueWithExpenses = createUseCla
+    ? 0
+    : totalCostWithExpenses * marginDecimal;
   const finalPriceWithExpenses = totalCostWithExpenses + profitValueWithExpenses;
 
   const detailMaterialCost = (detailForm.items || []).reduce(
@@ -2208,14 +2288,19 @@ const BudgetsPage = () => {
     Number(detailForm.profitMargin) || 0,
   );
   const detailMarginDecimal = detailMarginPercentage / 100;
+  const paperboardPreview = calculatePaperboardPreview(paperboardForm);
+  const detailPaperboardTotal =
+    paperboardConfig && paperboardPreview
+      ? paperboardPreview.suggestedPrice * (paperboardForm.quantity || 1)
+      : null;
   const detailBaseTotalForMargin =
-    paperboardConfig?.suggestedPrice ?? detailMaterialCost;
+    detailPaperboardTotal ?? detailMaterialCost;
   const detailTotalCostWithExpenses = detailBaseTotalForMargin;
-  const detailProfitValueWithExpenses =
-    detailTotalCostWithExpenses * detailMarginDecimal;
+  const detailProfitValueWithExpenses = paperboardConfig
+    ? 0
+    : detailTotalCostWithExpenses * detailMarginDecimal;
   const detailFinalPriceWithExpenses =
     detailTotalCostWithExpenses + detailProfitValueWithExpenses;
-  const paperboardPreview = calculatePaperboardPreview(paperboardForm);
   const detailPersistedTotalCost = Math.max(
     0,
     Number(selectedBudget?.totalCost) || detailTotalCostWithExpenses,
@@ -2233,6 +2318,26 @@ const BudgetsPage = () => {
           (paperboardPreview?.estimatedCost ?? 1)) *
         100
       : 0;
+  const selectedNewItemProduct =
+    newItem.mode === "existing"
+      ? productsCatalog.find((product) => product.id === newItem.productId)
+      : undefined;
+  const newItemUsesPaperboard =
+    Boolean(selectedNewItemProduct?.isPaperboardMaterial) ||
+    Boolean(newItem.isPaperboardMaterial);
+  const newItemCalculatedUnitPrice = newItemUsesPaperboard
+    ? resolveMaterialInputUnitPrice(newItem, selectedNewItemProduct)
+    : Number(newItem.unitPrice) || 0;
+  const selectedDetailNewItemProduct =
+    detailNewItem.mode === "existing"
+      ? productsCatalog.find((product) => product.id === detailNewItem.productId)
+      : undefined;
+  const detailNewItemUsesPaperboard =
+    Boolean(selectedDetailNewItemProduct?.isPaperboardMaterial) ||
+    Boolean(detailNewItem.isPaperboardMaterial);
+  const detailNewItemCalculatedUnitPrice = detailNewItemUsesPaperboard
+    ? resolveMaterialInputUnitPrice(detailNewItem, selectedDetailNewItemProduct)
+    : Number(detailNewItem.unitPrice) || 0;
 
   const closeCreateModal = () => {
     setModal(false);
@@ -2250,8 +2355,9 @@ const BudgetsPage = () => {
       length: 0,
       width: 0,
       height: 0,
-      gramatura: 0,
+      gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
       quantity: 0,
+      quality: "CMCBC",
       sheetsPerBundle: undefined,
       sheetUnitCost: undefined,
       cuttingCostPerKg: undefined,
@@ -2335,7 +2441,7 @@ const BudgetsPage = () => {
 
     if (createUseCla && !createClaPreview) {
       setFormError(
-        "Preencha os campos do Cálculo CLA (C, L, A, gramatura e quantidade).",
+        "Preencha os campos do Cálculo CLA (C, L, A, qualidade e quantidade).",
       );
       return;
     }
@@ -2372,7 +2478,7 @@ const BudgetsPage = () => {
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
         totalPrice: finalPriceWithExpenses,
         finalPrice: finalPriceWithExpenses,
-        profitMargin: normalizedProfitMargin,
+        profitMargin: createUseCla ? 0 : normalizedProfitMargin,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
         paymentTerms: form.paymentTerms.trim()
@@ -2414,7 +2520,10 @@ const BudgetsPage = () => {
       // Se criou via CLA, salva a configuração de papelão imediatamente
       if (createUseCla && createClaPreview) {
         try {
-          await upsertPaperboardConfig(created.id, createClaForm);
+          await upsertPaperboardConfig(
+            created.id,
+            toPaperboardConfigInput(createClaForm),
+          );
         } catch {
           // não bloqueia o fluxo, pode ser editado depois
         }
@@ -2595,11 +2704,21 @@ const BudgetsPage = () => {
     setIsSavingPaperboard(true);
     setPaperboardError("");
     try {
+      const nextPreview = calculatePaperboardPreview(paperboardForm);
       const saved = await upsertPaperboardConfig(
         selectedBudget.id,
-        paperboardForm,
+        toPaperboardConfigInput(paperboardForm),
       );
       setPaperboardConfig(saved);
+      if (nextPreview) {
+        const claTotalPrice =
+          nextPreview.suggestedPrice * (paperboardForm.quantity || 1);
+        await updateBudget(selectedBudget.id, {
+          totalPrice: claTotalPrice,
+          finalPrice: claTotalPrice,
+          profitMargin: 0,
+        });
+      }
       const refreshedBudget = mapBudgetFromApi(
         await getBudgetById(selectedBudget.id),
         clientsCatalog,
@@ -2782,7 +2901,7 @@ const BudgetsPage = () => {
           status: detailForm.status,
           totalPrice: totalPriceToPersist,
           finalPrice: totalPriceToPersist,
-          profitMargin: normalizedDetailProfitMargin,
+          profitMargin: paperboardConfig ? 0 : normalizedDetailProfitMargin,
           costsApplicableValue: Math.max(
             0,
             Number(detailForm.costsApplicableValue) || 0,
@@ -4061,72 +4180,39 @@ const BudgetsPage = () => {
                     </div>
                   )}
 
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNewItem((current) => ({
-                          ...createEmptyMaterialInput("existing"),
-                          mode: "existing",
-                        }))
-                      }
-                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                        newItem.mode === "existing"
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      Selecionar produto existente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNewItem((current) => ({
-                          ...createEmptyMaterialInput("new"),
-                          mode: "new",
-                        }))
-                      }
-                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                        newItem.mode === "new"
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      Cadastrar material novo
-                    </button>
-                  </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     <div className="flex-1">
-                      {newItem.mode === "existing" ? (
-                        <FormField
+                      <FormField
                           label="Produto"
                           as="select"
                           value={newItem.productId}
-                          onChange={(e) =>
-                            setNewItem({
+                          onChange={(e) => {
+                            const product = productsCatalog.find(
+                              (item) => item.id === e.target.value,
+                            );
+                            const nextItem = {
                               ...newItem,
                               productId: e.target.value,
-                            })
-                          }
+                              isPaperboardMaterial:
+                                product?.isPaperboardMaterial ?? false,
+                              length: product?.length ?? 0,
+                              width: product?.width ?? 0,
+                              height: product?.height ?? 0,
+                            };
+                            setNewItem({
+                              ...nextItem,
+                              unitPrice:
+                                resolveMaterialInputUnitPrice(
+                                  nextItem,
+                                  product,
+                                ) ?? 0,
+                            });
+                          }}
                           options={productsCatalog.map((product) => ({
                             value: product.id,
                             label: `${product.name} (Saldo: ${product.stockQuantity})`,
                           }))}
                         />
-                      ) : (
-                        <FormField
-                          label="Novo material"
-                          value={newItem.productName}
-                          onChange={(e) =>
-                            setNewItem({
-                              ...newItem,
-                              productName: e.target.value,
-                            })
-                          }
-                          placeholder="Ex.: MDF Branco 15mm"
-                        />
-                      )}
                     </div>
                     <div className="w-full md:w-24">
                       <FormField
@@ -4157,7 +4243,12 @@ const BudgetsPage = () => {
                         type="number"
                         min={0}
                         step="0.01"
-                        value={newItem.unitPrice}
+                        value={
+                          newItemUsesPaperboard
+                            ? Number((newItemCalculatedUnitPrice ?? 0).toFixed(2))
+                            : newItem.unitPrice
+                        }
+                        disabled={newItemUsesPaperboard}
                         onChange={(e) =>
                           setNewItem({
                             ...newItem,
@@ -4231,19 +4322,32 @@ const BudgetsPage = () => {
                       }
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <FormField
+                      label="Qualidade"
+                      as="select"
+                      value={createClaForm.quality || "CMCBC"}
+                      options={[
+                        { value: "CMCB", label: "CMCB" },
+                        { value: "CMCBC", label: "CMCBC" },
+                      ]}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => {
+                          const quality =
+                            e.target.value === "CMCB" ? "CMCB" : "CMCBC";
+                          return {
+                            ...f,
+                            quality,
+                            gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
+                          };
+                        })
+                      }
+                    />
                     <FormField
                       label="Gramatura (g/m²)"
                       type="number"
-                      min={0}
-                      step="1"
                       value={createClaForm.gramatura || ""}
-                      onChange={(e) =>
-                        setCreateClaForm((f) => ({
-                          ...f,
-                          gramatura: Number(e.target.value),
-                        }))
-                      }
+                      disabled
                     />
                     <FormField
                       label="Quantidade"
@@ -4259,107 +4363,25 @@ const BudgetsPage = () => {
                       }
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      label="Folhas por fardo"
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={createClaForm.sheetsPerBundle ?? ""}
-                      onChange={(e) =>
-                        setCreateClaForm((f) => ({
-                          ...f,
-                          sheetsPerBundle: e.target.value
-                            ? Number(e.target.value)
-                            : undefined,
-                        }))
-                      }
-                    />
-                    <FormField
-                      label="Custo por folha (R$)"
-                      type="number"
-                      min={0}
-                      step="0.0001"
-                      value={createClaForm.sheetUnitCost ?? ""}
-                      onChange={(e) =>
-                        setCreateClaForm((f) => ({
-                          ...f,
-                          sheetUnitCost: e.target.value
-                            ? Number(e.target.value)
-                            : undefined,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      label="Perda (%)"
-                      type="number"
-                      min={0}
-                      step="0.1"
-                      value={createClaForm.lossPercentage ?? 0}
-                      onChange={(e) =>
-                        setCreateClaForm((f) => ({
-                          ...f,
-                          lossPercentage: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={createClaForm.isFirstPurchase ?? false}
-                        onChange={(e) =>
-                          setCreateClaForm((f) => ({
-                            ...f,
-                            isFirstPurchase: e.target.checked,
-                          }))
-                        }
-                      />
-                      Primeira compra (inclui clichê)
-                    </label>
-                    
-                  </div>
-                  {createClaForm.isFirstPurchase && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField
-                        label="Custo clichê (R$)"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={createClaForm.clicheCost ?? ""}
-                        onChange={(e) =>
-                          setCreateClaForm((f) => ({
-                            ...f,
-                            clicheCost: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
-                          }))
-                        }
-                      />
-                      <FormField
-                        label="Preço clichê (R$)"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={createClaForm.clichePrice ?? ""}
-                        onChange={(e) =>
-                          setCreateClaForm((f) => ({
-                            ...f,
-                            clichePrice: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
-                          }))
-                        }
-                      />
-                    </div>
-                  )}
 
                   {/* Preview CLA */}
                   {createClaPreview ? (
-                    <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 border border-border rounded p-2 bg-background">
+                    <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2 border border-border rounded p-2 bg-background">
+                      <div className="text-center">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          Peso unit.
+                        </p>
+                        <p className="font-bold text-sm">
+                          {createClaPreview.unitWeightKg.toLocaleString(
+                            "pt-BR",
+                            {
+                              minimumFractionDigits: 3,
+                              maximumFractionDigits: 3,
+                            },
+                          )}{" "}
+                          kg
+                        </p>
+                      </div>
                       <div className="text-center">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                           Custo unit.
@@ -4398,8 +4420,7 @@ const BudgetsPage = () => {
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Preencha C, L, A, gramatura e quantidade para ver o
-                      preview.
+                      Preencha C, L, A, qualidade e quantidade para ver o valor.
                     </p>
                   )}
                 </div>
@@ -4991,72 +5012,39 @@ const BudgetsPage = () => {
                   </div>
                 )}
 
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDetailNewItem((current) => ({
-                        ...createEmptyMaterialInput("existing"),
-                        mode: "existing",
-                      }))
-                    }
-                    className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                      detailNewItem.mode === "existing"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    Selecionar produto existente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDetailNewItem((current) => ({
-                        ...createEmptyMaterialInput("new"),
-                        mode: "new",
-                      }))
-                    }
-                    className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                      detailNewItem.mode === "new"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    Cadastrar material novo
-                  </button>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                   <div className="flex-1">
-                    {detailNewItem.mode === "existing" ? (
-                      <FormField
+                    <FormField
                         label="Produto"
                         as="select"
                         value={detailNewItem.productId}
-                        onChange={(e) =>
-                          setDetailNewItem({
+                        onChange={(e) => {
+                          const product = productsCatalog.find(
+                            (item) => item.id === e.target.value,
+                          );
+                          const nextItem = {
                             ...detailNewItem,
                             productId: e.target.value,
-                          })
-                        }
+                            isPaperboardMaterial:
+                              product?.isPaperboardMaterial ?? false,
+                            length: product?.length ?? 0,
+                            width: product?.width ?? 0,
+                            height: product?.height ?? 0,
+                          };
+                          setDetailNewItem({
+                            ...nextItem,
+                            unitPrice:
+                              resolveMaterialInputUnitPrice(
+                                nextItem,
+                                product,
+                              ) ?? 0,
+                          });
+                        }}
                         options={productsCatalog.map((product) => ({
                           value: product.id,
                           label: `${product.name} (Saldo: ${product.stockQuantity})`,
                         }))}
                       />
-                    ) : (
-                      <FormField
-                        label="Novo material"
-                        value={detailNewItem.productName}
-                        onChange={(e) =>
-                          setDetailNewItem({
-                            ...detailNewItem,
-                            productName: e.target.value,
-                          })
-                        }
-                        placeholder="Ex.: MDF Branco 15mm"
-                      />
-                    )}
                   </div>
                   <div className="w-full md:w-24">
                     <FormField
@@ -5090,7 +5078,14 @@ const BudgetsPage = () => {
                       type="number"
                       min={0}
                       step="0.01"
-                      value={detailNewItem.unitPrice}
+                      value={
+                        detailNewItemUsesPaperboard
+                          ? Number(
+                              (detailNewItemCalculatedUnitPrice ?? 0).toFixed(2),
+                            )
+                          : detailNewItem.unitPrice
+                      }
+                      disabled={detailNewItemUsesPaperboard}
                       onChange={(e) =>
                         setDetailNewItem({
                           ...detailNewItem,
@@ -5164,7 +5159,7 @@ const BudgetsPage = () => {
                               Dimensões:
                             </span>{" "}
                             {paperboardConfig.length} × {paperboardConfig.width}{" "}
-                            × {paperboardConfig.height} cm
+                            × {paperboardConfig.height} mm
                           </p>
                           <p>
                             <span className="text-muted-foreground">
@@ -5241,7 +5236,7 @@ const BudgetsPage = () => {
 
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <FormField
-                          label="Comprimento (cm)"
+                          label="Comprimento (mm)"
                           type="number"
                           min={0}
                           step="0.1"
@@ -5254,7 +5249,7 @@ const BudgetsPage = () => {
                           }
                         />
                         <FormField
-                          label="Largura (cm)"
+                          label="Largura (mm)"
                           type="number"
                           min={0}
                           step="0.1"
@@ -5267,7 +5262,7 @@ const BudgetsPage = () => {
                           }
                         />
                         <FormField
-                          label="Altura (cm)"
+                          label="Altura (mm)"
                           type="number"
                           min={0}
                           step="0.1"
@@ -5487,6 +5482,19 @@ const BudgetsPage = () => {
                           <p className="text-[11px] text-muted-foreground mb-2">
                             Estes valores são apenas prévia. O orçamento só é
                             atualizado após clicar em Salvar Configuração.
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Peso unitario:
+                            </span>{" "}
+                            {paperboardPreview.unitWeightKg.toLocaleString(
+                              "pt-BR",
+                              {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              },
+                            )}{" "}
+                            kg
                           </p>
                           <p>
                             <span className="text-muted-foreground">
