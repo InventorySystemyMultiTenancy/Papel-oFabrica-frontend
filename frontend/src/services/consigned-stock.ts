@@ -41,6 +41,24 @@ export type AddConsignedMovementInput = {
   type?: "entrada" | "saida";
 };
 
+function unwrapData<T = Record<string, unknown>>(payload: unknown): T {
+  if (!payload || typeof payload !== "object") {
+    return payload as T;
+  }
+
+  const response = payload as Record<string, unknown>;
+  const data = response.data;
+
+  if (data && typeof data === "object") {
+    const nestedData = (data as Record<string, unknown>).data;
+    return ((nestedData && typeof nestedData === "object"
+      ? nestedData
+      : data) ?? response) as T;
+  }
+
+  return response as T;
+}
+
 function normalizeItem(raw: Record<string, unknown>): ConsignedStockItem {
   return {
     id: raw.id as string,
@@ -108,13 +126,25 @@ export async function upsertConsignedStock(
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return normalizeItem(data as Record<string, unknown>);
+
+  const consignedStock = unwrapData<Record<string, unknown>>(data);
+  const consignedStockId = consignedStock?.id;
+
+  if (!consignedStockId) {
+    throw new Error("ID do estoque consignado não retornado pelo backend");
+  }
+
+  return normalizeItem(consignedStock);
 }
 
 export async function addConsignedMovement(
   id: string,
   input: AddConsignedMovementInput,
 ): Promise<ConsignedMovement> {
+  if (!id) {
+    throw new Error("ID do estoque consignado não retornado pelo backend");
+  }
+
   const payload = {
     movementType: input.movementType ?? input.type,
     quantity: Math.trunc(input.quantity),
@@ -126,7 +156,7 @@ export async function addConsignedMovement(
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return normalizeMovement(data as Record<string, unknown>);
+  return normalizeMovement(unwrapData<Record<string, unknown>>(data));
 }
 
 export async function getConsignedMovements(

@@ -9,7 +9,7 @@ import { dispatchInventoryRefresh } from "@/lib/inventory-events";
 import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
-import { Product, listProducts } from "@/services/products";
+import { Product, createProduct, listProducts } from "@/services/products";
 import { getBudgetById, listBudgets, type Budget } from "@/services/budgets";
 import { getPaperboardConfig, type PaperboardConfig } from "@/services/paperboard";
 import {
@@ -347,6 +347,22 @@ const ProductionPage = () => {
     );
   };
 
+  const inferPaperboardQuality = (
+    gramatura: number,
+  ): NonNullable<Product["quality"]> =>
+    Math.round(Number(gramatura) || 0) === 511 ? "CMCB" : "CMCBC";
+
+  const buildPaperboardProductName = (
+    budget: ApprovedBudgetForProduction,
+    config: PaperboardConfig,
+  ) => {
+    const quality = inferPaperboardQuality(config.gramatura);
+    const dimensions = `${config.length}x${config.width}x${config.height}mm`;
+    const budgetRef = budget.id.slice(0, 8);
+
+    return `Caixa papelao ${dimensions} ${quality} - Orcamento ${budgetRef}`;
+  };
+
   const resolveBudgetApplicableCost = (budget: ApprovedBudgetForProduction) =>
     Math.max(0, Number(budget.costsApplicableValue) || 0);
 
@@ -595,6 +611,10 @@ const ProductionPage = () => {
     [approvedBudgetsCatalog, form.budgetId],
   );
 
+  const canCreateMaterialFromSelectedCla = Boolean(
+    selectedApprovedBudget && selectedBudgetPaperboard,
+  );
+
   useEffect(() => {
     if (!selectedApprovedBudget) {
       setSelectedBudgetDetail(null);
@@ -817,6 +837,50 @@ const ProductionPage = () => {
       ...current,
       materials: current.materials.filter((_, i) => i !== idx),
     }));
+  };
+
+  const resolveMaterialsForProduction = async (): Promise<
+    ProductionMaterial[]
+  > => {
+    if (form.materials.length > 0) {
+      return form.materials;
+    }
+
+    if (!selectedApprovedBudget || !selectedBudgetPaperboard) {
+      return [];
+    }
+
+    const quantity = Math.max(
+      1,
+      Math.trunc(Number(selectedBudgetPaperboard.quantity) || 0),
+    );
+    const productName = buildPaperboardProductName(
+      selectedApprovedBudget,
+      selectedBudgetPaperboard,
+    );
+    const existingProduct = findProductByName(productName);
+    const product =
+      existingProduct ??
+      (await createProduct({
+        name: productName,
+        stockQuantity: quantity,
+        lowStockAlertQuantity: 0,
+        isPaperboardMaterial: true,
+        length: selectedBudgetPaperboard.length,
+        width: selectedBudgetPaperboard.width,
+        height: selectedBudgetPaperboard.height,
+        gramatura: selectedBudgetPaperboard.gramatura,
+        quality: inferPaperboardQuality(selectedBudgetPaperboard.gramatura),
+      }));
+
+    return [
+      {
+        productId: product.id,
+        productName: product.name,
+        quantity,
+        unit: "unidade",
+      },
+    ];
   };
 
   const closeModal = () => {
@@ -1070,10 +1134,10 @@ const ProductionPage = () => {
       !form.description.trim() ||
       !form.deliveryDate ||
       form.initialCost <= 0 ||
-      form.materials.length === 0
+      (form.materials.length === 0 && !canCreateMaterialFromSelectedCla)
     ) {
       setFormError(
-        "Preencha cliente, descrição, prazo, custo inicial e pelo menos um material.",
+        "Preencha cliente, descricao, prazo, custo inicial e pelo menos um material ou selecione um orcamento com CLA.",
       );
       return;
     }
@@ -1122,6 +1186,14 @@ const ProductionPage = () => {
     setFormError("");
 
     try {
+      const productionMaterials = await resolveMaterialsForProduction();
+
+      if (productionMaterials.length === 0) {
+        throw new Error(
+          "Nao foi possivel montar o material da producao a partir do orcamento.",
+        );
+      }
+
       await createProduction({
         clientName: client.name,
         description: form.description.trim(),
@@ -1130,7 +1202,7 @@ const ProductionPage = () => {
           : null,
         budgetId: form.budgetId || undefined,
         initialCost: Number(form.initialCost),
-        materials: form.materials,
+        materials: productionMaterials,
         productionType: (form.productionType as "corte" | "vinco") || null,
         productionLocation:
           (form.productionLocation as "interno" | "terceirizado") || null,
@@ -1141,6 +1213,8 @@ const ProductionPage = () => {
       });
 
       closeModal();
+      dispatchInventoryRefresh();
+      void loadProductsForForm();
       await loadProductions();
     } catch (error) {
       const message =
@@ -1924,6 +1998,28 @@ const ProductionPage = () => {
                   </div>
                 )}
 
+                {form.materials.length === 0 &&
+                  selectedApprovedBudget &&
+                  selectedBudgetPaperboard && (
+                    <div className="mb-3 rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        Material via CLA:
+                      </span>{" "}
+                      ao criar a producao, sera criado automaticamente um
+                      produto de papelao com {selectedBudgetPaperboard.length} x{" "}
+                      {selectedBudgetPaperboard.width} x{" "}
+                      {selectedBudgetPaperboard.height} mm, gramatura{" "}
+                      {selectedBudgetPaperboard.gramatura} g/m² e quantidade{" "}
+                      {Math.max(
+                        1,
+                        Math.trunc(
+                          Number(selectedBudgetPaperboard.quantity) || 0,
+                        ),
+                      ).toLocaleString("pt-BR")}
+                      .
+                    </div>
+                  )}
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="flex-1">
                     <FormField
@@ -2017,10 +2113,11 @@ const ProductionPage = () => {
                 disabled={
                   isSaving ||
                   isLoadingClients ||
-                  isLoadingProducts ||
+                  (isLoadingProducts && !canCreateMaterialFromSelectedCla) ||
                   isLoadingBudgets ||
                   clientsCatalog.length === 0 ||
-                  productsCatalog.length === 0
+                  (productsCatalog.length === 0 &&
+                    !canCreateMaterialFromSelectedCla)
                 }
                 className="w-full sm:w-auto px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
               >

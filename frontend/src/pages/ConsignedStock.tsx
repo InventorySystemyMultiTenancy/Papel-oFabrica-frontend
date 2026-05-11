@@ -97,7 +97,7 @@ export default function ConsignedStockPage() {
     } catch (e) {
       toast({
         title: "Erro",
-        description: e instanceof ApiError ? e.message : "Erro ao salvar",
+        description: e instanceof Error ? e.message : "Erro ao salvar",
         variant: "destructive",
       });
     }
@@ -120,7 +120,7 @@ export default function ConsignedStockPage() {
     } catch (e) {
       toast({
         title: "Erro",
-        description: e instanceof ApiError ? e.message : "Erro ao registrar",
+        description: e instanceof Error ? e.message : "Erro ao registrar",
         variant: "destructive",
       });
     }
