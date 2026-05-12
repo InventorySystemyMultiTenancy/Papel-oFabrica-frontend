@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardLayout, EmbeddedContext } from "@/layouts/DashboardLayout";
+import { useRoleAccess } from "@/auth/AuthProvider";
 import LogisticsPage from "./Logistics";
 import DeliveryRoutesPage from "./DeliveryRoutes";
 
@@ -11,17 +12,27 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function LogisticsHub() {
+  const { isEmployee } = useRoleAccess();
   const [activeTab, setActiveTab] = useState<Tab>("visao-geral");
+  const visibleTabs = useMemo(
+    () => (isEmployee ? TABS.filter((tab) => tab.id !== "roteiros") : TABS),
+    [isEmployee],
+  );
+
+  useEffect(() => {
+    if (isEmployee && activeTab === "roteiros") {
+      setActiveTab("visao-geral");
+    }
+  }, [activeTab, isEmployee]);
 
   return (
     <DashboardLayout
       title="Logística"
-      subtitle="Visão geral e roteiros de entrega"
+      subtitle={isEmployee ? "Visão geral" : "Visão geral e roteiros de entrega"}
     >
       <div className="space-y-4">
-        {/* Tab bar */}
         <div className="flex gap-0 border-b border-border">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -36,10 +47,9 @@ export default function LogisticsHub() {
           ))}
         </div>
 
-        {/* Tab content — EmbeddedContext strips DashboardLayout from sub-pages */}
         <EmbeddedContext.Provider value={true}>
           {activeTab === "visao-geral" && <LogisticsPage />}
-          {activeTab === "roteiros" && <DeliveryRoutesPage />}
+          {!isEmployee && activeTab === "roteiros" && <DeliveryRoutesPage />}
         </EmbeddedContext.Provider>
       </div>
     </DashboardLayout>

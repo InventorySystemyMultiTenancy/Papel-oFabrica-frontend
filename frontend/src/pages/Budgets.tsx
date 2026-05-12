@@ -40,12 +40,18 @@ import { Plus, Trash2 } from "lucide-react";
 type MaterialInputMode = "existing" | "new";
 
 const imageDataUrlCache: Record<string, string | null | undefined> = {};
+const budgetPdfTotalValueCache: Record<string, number | undefined> = {};
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
+
+const formatPdfTotalCurrency = (value: number) =>
+  `R$ ${value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+  })}`;
 
 const formatStatus = (status: BudgetRow["status"]) => {
   switch (status) {
@@ -96,6 +102,64 @@ const sanitizeFileName = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+
+const resolveBudgetTotalValue = (
+  budget: Pick<BudgetRow, "items" | "profitMargin" | "finalPrice">,
+  baseTotal?: number,
+) => {
+  const itemsTotal =
+    baseTotal ??
+    budget.items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
+      0,
+    );
+  const marginPercentage = normalizeMarginPercentage(budget.profitMargin);
+
+  return Math.max(
+    0,
+    itemsTotal > 0
+      ? itemsTotal * (1 + marginPercentage / 100)
+      : Number(budget.finalPrice) || 0,
+  );
+};
+
+const resolveBudgetPdfTableTotal = async (
+  budget: Pick<BudgetRow, "id" | "items" | "finalPrice">,
+) => {
+  if (budget.items.length > 0) {
+    return budget.items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
+      0,
+    );
+  }
+
+  try {
+    const claConfig = await getPaperboardConfig(budget.id);
+
+    if (claConfig) {
+      return claConfig.suggestedPrice * claConfig.quantity;
+    }
+  } catch {
+    // Mantem o mesmo fallback usado no PDF do orcamento.
+  }
+
+  return Number(budget.finalPrice) || 0;
+};
+
+const resolveBudgetPdfTotalValue = async (
+  budget: Pick<BudgetRow, "id" | "items" | "profitMargin" | "finalPrice">,
+) => {
+  const cachedTotal = budgetPdfTotalValueCache[budget.id];
+
+  if (Number.isFinite(cachedTotal)) {
+    return cachedTotal as number;
+  }
+
+  return resolveBudgetTotalValue(
+    budget,
+    await resolveBudgetPdfTableTotal(budget),
+  );
+};
 
 const blobToDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -163,10 +227,21 @@ const PROPOSAL_NOTES_PLACEHOLDER = [
 const DEFAULT_BUDGET_PDF_PAYMENT_TERMS = [
   "Pagamento: Ato + boleto em 15/30/45 dias (conforme negociação).",
   "Prazo de pagamento e entrega sujeitos a ajuste por atraso logístico ou operacional.",
-  "Proposta válida por 10 dias úteis.",
 ].join("\n");
 
-const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 10;
+const COMPANY_NAME = "4D EMBALAGENS LTDA";
+const COMPANY_ADDRESS = "Rua Benedito Passos, 160 - Vila Matilde - SP";
+const COMPANY_CNPJ = "CNPJ: 62.728.414/0001-99";
+const COMPANY_TEL = "Tel: (11) 2651-4292 | Cel: (11) 95266-1751";
+const COMPANY_CONTACT = "Daniel Visnardi";
+const COMPANY_DEPT = "Dpto Comercial";
+const COMPANY_CELL = "(11) 95266-1751";
+const COMPANY_EMAIL = "daniel@4dembalagens.com.br";
+const COMPANY_CONTRACT_LINE =
+  "CONTRATADA: 4D EMBALAGENS LTDA, pessoa juridica de direito privado, inscrita no CNPJ sob o n.o 62.728.414/0001-99, com sede na Rua Benedito Passos, 160 - Vila Matilde - SP, doravante denominada simplesmente CONTRATADA.";
+const BUDGET_PDF_VALIDITY_FOOTER = "Validade do orçamento: 15 dias";
+
+const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 15;
 const PAPERBOARD_PRICE_PER_KG = 14;
 
 const PAYMENT_TERMS_PRESETS = [
@@ -988,7 +1063,7 @@ const DEFAULT_CONTRACT_CLAUSES: Array<
   {
     title: "CLÁUSULA 2 — DO VALOR",
     content: [
-      "A CONTRATANTE pagará à CONTRATADA o valor unitário de {{valor_contrato}}.",
+      "A CONTRATANTE pagará à CONTRATADA o valor total de {{valor_contrato}}.",
       "O pagamento deverá ser efetuado da seguinte forma:",
       "(a) Parcela no ato da confirmação do pedido;",
       "(b) Demais parcelas em boleto, conforme prazo negociado (15/30/45 dias).",
@@ -1046,7 +1121,7 @@ const formatLongDate = (inputDate: string) => {
 const replaceContractPlaceholders = (value: string, contractValue: number) =>
   value.replace(
     /\{\{\s*valor_contrato\s*\}\}/gi,
-    formatCurrency(contractValue),
+    formatPdfTotalCurrency(contractValue),
   );
 
 const createInitialBudgetForm = () => ({
@@ -3058,25 +3133,29 @@ const BudgetsPage = () => {
     setContractFormError("");
   };
 
-  const openContractModal = (budget: BudgetRow) => {
+  const resolveContractBudgetTotalValue = async (budget: BudgetRow) => {
+    const cachedTotal = budgetPdfTotalValueCache[budget.id];
+
+    if (Number.isFinite(cachedTotal)) {
+      return cachedTotal as number;
+    }
+
+    try {
+      const detailedBudget = mapBudgetFromApi(
+        await getBudgetById(budget.id),
+        clientsCatalog,
+      );
+      return await resolveBudgetPdfTotalValue(detailedBudget);
+    } catch {
+      return await resolveBudgetPdfTotalValue(budget);
+    }
+  };
+
+  const openContractModal = async (budget: BudgetRow) => {
     const linkedClient =
       clientsCatalog.find((client) => client.id === budget.clientId) ||
       findClientByName(clientsCatalog, budget.clientName);
-    const itemsBaseTotal = budget.items.reduce(
-      (sum, item) => sum + item.quantity * item.unitPrice,
-      0,
-    );
-    const marginPercentage = normalizeMarginPercentage(budget.profitMargin);
-    const fallbackFinalPrice =
-      itemsBaseTotal > 0
-        ? itemsBaseTotal * (1 + marginPercentage / 100)
-        : Number(budget.finalPrice) || 0;
-    const contractValue = Math.max(
-      0,
-      Number(budget.finalPrice) > 0
-        ? Number(budget.finalPrice)
-        : fallbackFinalPrice,
-    );
+    const contractValue = await resolveContractBudgetTotalValue(budget);
 
     setSelectedBudgetForContract(budget);
     setContractFormError("");
@@ -3097,16 +3176,6 @@ const BudgetsPage = () => {
   const generateBudgetPdf = async (budget: BudgetRow) => {
     setGeneratingPdfId(budget.id);
 
-    // ── Constantes da empresa (molde 4D EMBALAGENS) ──────────────────────────
-    const COMPANY_NAME = "4D EMBALAGENS LTDA";
-    const COMPANY_ADDRESS = "Rua Benedito Passos, 160 - Vila Matilde - SP";
-    const COMPANY_CNPJ = "CNPJ: 62.728.414/0001-99";
-    const COMPANY_TEL = "Tel: (11) 2651-4292 | Cel: (11) 95266-1751";
-    const COMPANY_CONTACT = "Daniel Visnardi";
-    const COMPANY_DEPT = "Dpto Comercial";
-    const COMPANY_CELL = "(11) 95266-1751";
-    const COMPANY_EMAIL = "daniel@4dembalagens.com.br";
-
     try {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
@@ -3114,7 +3183,7 @@ const BudgetsPage = () => {
       const PH = pdf.internal.pageSize.getHeight(); // 297
       const MX = 14; // margem horizontal
       const CW = PW - MX * 2; // largura útil ≈ 182
-      const bottomLimit = PH - 14;
+      const bottomLimit = PH - 22;
       let y = 12;
 
       // ── 1. CABEÇALHO: logo + dados empresa ─────────────────────────────────
@@ -3210,16 +3279,6 @@ const BudgetsPage = () => {
         fieldLine("Pagamento", budget.paymentTerms.trim(), rX, rY, colW);
         rY += 5;
       }
-      if (budget.estimatedDeliveryBusinessDays) {
-        fieldLine(
-          "Prazo (d.u.)",
-          `${budget.estimatedDeliveryBusinessDays} dia(s)`,
-          rX,
-          rY,
-          colW,
-        );
-      }
-
       y += BOX_H + 8;
 
       // ── 4. TABELA DE PRODUTOS ────────────────────────────────────────────────
@@ -3360,13 +3419,8 @@ const BudgetsPage = () => {
         }
       }
 
-      const marginPercentage = normalizeMarginPercentage(budget.profitMargin);
-      const marginAppliedTotal = Math.max(
-        0,
-        tableTotal > 0
-          ? tableTotal * (1 + marginPercentage / 100)
-          : Number(budget.finalPrice) || 0,
-      );
+      const marginAppliedTotal = resolveBudgetTotalValue(budget, tableTotal);
+      budgetPdfTotalValueCache[budget.id] = marginAppliedTotal;
 
       // Célula "Total R$"
       ensureSpace(8);
@@ -3469,6 +3523,18 @@ const BudgetsPage = () => {
       y += 4.5;
       pdf.text(COMPANY_EMAIL, MX, y);
 
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+        pdf.setPage(pageNumber);
+        pdf.setDrawColor(221, 221, 221);
+        pdf.setLineWidth(0.35);
+        pdf.line(MX, PH - 14, PW - MX, PH - 14);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(26, 26, 26);
+        pdf.text(BUDGET_PDF_VALIDITY_FOOTER, MX, PH - 8);
+      }
+
       const safeClientName = sanitizeFileName(budget.clientName) || "cliente";
       pdf.save(`orcamento-${budget.id}-${safeClientName}.pdf`);
     } catch {
@@ -3495,8 +3561,14 @@ const BudgetsPage = () => {
       return;
     }
 
-    if (contractForm.contractValue <= 0) {
-      setContractFormError("Informe um valor válido para o contrato.");
+    const budgetTotalValue = await resolveContractBudgetTotalValue(
+      selectedBudgetForContract,
+    );
+
+    if (budgetTotalValue <= 0) {
+      setContractFormError(
+        "O orçamento selecionado precisa ter um valor total válido.",
+      );
       return;
     }
 
@@ -3626,10 +3698,7 @@ const BudgetsPage = () => {
       addGap(2);
       separator();
 
-      writeLine(
-        "CONTRATADA: GIRA KIDS COMERCIO DE DOCES, BRINQUEDOS E JOGOS ELETRONICOS LTDA, pessoa juridica de direito privado, inscrita no CNPJ sob o n.o 07.313.928/0001-75, com sede na Avenida Cachoeira Paulista, 17 - Cidade Patriarca - Cep: 03551-000, doravante denominada simplesmente CONTRATADA.",
-        { bold: true },
-      );
+      writeLine(COMPANY_CONTRACT_LINE, { bold: true });
       addGap(2);
       separator();
 
@@ -3658,7 +3727,7 @@ const BudgetsPage = () => {
 
         const processedContent = replaceContractPlaceholders(
           clause.content,
-          contractForm.contractValue,
+          budgetTotalValue,
         );
         const contentLines = processedContent.split(/\r?\n/);
 
@@ -3710,7 +3779,7 @@ const BudgetsPage = () => {
       pdf.text(contractForm.contratanteName, leftSignatureX, y);
       pdf.text("CONTRATANTE", leftSignatureX, y + 4.2);
 
-      pdf.text("GIRA KIDS COMERCIO DE DOCES", rightSignatureX, y);
+      pdf.text(COMPANY_NAME, rightSignatureX, y);
       pdf.text("CONTRATADA", rightSignatureX, y + 4.2);
 
       const safeClientName =
@@ -3847,7 +3916,7 @@ const BudgetsPage = () => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              openContractModal(b);
+              void openContractModal(b);
             }}
             className="px-2 py-1 text-[11px] font-bold rounded border border-border text-foreground hover:bg-secondary transition-colors"
           >
@@ -5738,17 +5807,12 @@ const BudgetsPage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FormField
-              label="Valor do Contrato (R$)"
+              label="Valor total do orçamento (R$)"
               type="number"
               min={0}
               step="0.01"
               value={contractForm.contractValue}
-              onChange={(e) =>
-                setContractForm((current) => ({
-                  ...current,
-                  contractValue: Number(e.target.value),
-                }))
-              }
+              readOnly
             />
             <FormField
               label="Cidade da Assinatura"

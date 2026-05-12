@@ -1,23 +1,22 @@
 import {
-  LayoutDashboard,
-  Users,
-  User,
   Box,
+  Calculator,
+  DollarSign,
   FileText,
   Hammer,
-  Truck,
-  DollarSign,
-  Tag,
   Recycle,
   ShoppingBag,
-  Calculator,
+  Tag,
+  Truck,
+  User,
+  Users,
 } from "lucide-react";
-import { NavLink } from "@/components/NavLink";
+import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
 import type { UserRole } from "@/auth/types";
+import { NavLink } from "@/components/NavLink";
 import { useLanguage } from "@/i18n/LanguageProvider";
-import { useLocation } from "react-router-dom";
-import { useEffect, useRef } from "react";
 
 interface NavItem {
   title: string;
@@ -31,7 +30,7 @@ const navItems = [
     title: "Logística",
     url: "/logistics",
     icon: Truck,
-    allowedRoles: ["admin", "gerente", "funcionario"],
+    allowedRoles: ["admin", "funcionario"],
   },
   {
     title: "Clientes",
@@ -49,7 +48,7 @@ const navItems = [
     title: "Estoque",
     url: "/products",
     icon: Box,
-    allowedRoles: ["admin", "gerente"],
+    allowedRoles: ["admin"],
   },
   {
     title: "Orçamentos",
@@ -67,13 +66,13 @@ const navItems = [
     title: "Financeiro",
     url: "/financial",
     icon: DollarSign,
-    allowedRoles: ["admin", "gerente"],
+    allowedRoles: ["admin"],
   },
   {
     title: "Clichês",
     url: "/cliches",
     icon: Tag,
-    allowedRoles: ["admin", "gerente"],
+    allowedRoles: ["admin"],
   },
   {
     title: "Resíduos",

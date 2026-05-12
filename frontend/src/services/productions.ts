@@ -1129,6 +1129,37 @@ const buildProductionsPath = (params?: ListProductionsParams) => {
 
 export const listProductions = async (params?: ListProductionsParams) => {
   const payload = await request<unknown>(buildProductionsPath(params));
+  const data = unwrapDataEnvelope(payload);
+
+  if (Array.isArray(data)) {
+    return data
+      .map(mapProduction)
+      .filter((item): item is EmployeeProduction => Boolean(item));
+  }
+
+  const dataRecord = toRecord(data);
+  const nestedData = dataRecord ? unwrapDataEnvelope(dataRecord) : null;
+
+  if (Array.isArray(nestedData)) {
+    return nestedData
+      .map(mapProduction)
+      .filter((item): item is EmployeeProduction => Boolean(item));
+  }
+
+  const possibleCollections = [
+    dataRecord?.productions,
+    dataRecord?.items,
+    dataRecord?.rows,
+    dataRecord?.results,
+  ];
+
+  for (const collection of possibleCollections) {
+    if (Array.isArray(collection)) {
+      return collection
+        .map(mapProduction)
+        .filter((item): item is EmployeeProduction => Boolean(item));
+    }
+  }
 
   return parseCollection<unknown>(payload)
     .map(mapProduction)

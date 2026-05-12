@@ -72,6 +72,13 @@ interface FinancialMonthRow {
   generalProfit: number;
 }
 
+interface LogisticsProductionSummary {
+  totalCount: number;
+  activeCount: number;
+  overdueCount: number;
+  onTimeCount: number;
+}
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const financialByProductionChartConfig = {
@@ -287,7 +294,7 @@ const getMonthReference = (deliveryDate: string) => {
 
 
 const LogisticsPage = () => {
-  const { canViewFinancials } = useRoleAccess();
+  const { isEmployee } = useRoleAccess();
   const [productions, setProductions] = useState<EmployeeProduction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -301,6 +308,8 @@ const LogisticsPage = () => {
   const [requestError, setRequestError] = useState("");
   const [secondaryWarning, setSecondaryWarning] = useState("");
   const [receivablePaidTotal, setReceivablePaidTotal] = useState(0);
+  const [employeeSummary, setEmployeeSummary] =
+    useState<LogisticsProductionSummary | null>(null);
 
   const loadLogisticsData = async () => {
     setIsLoading(true);
@@ -308,6 +317,40 @@ const LogisticsPage = () => {
     setSecondaryWarning("");
 
     try {
+      if (isEmployee) {
+        const employeeProductions = await listProductions();
+        const activeRows = employeeProductions
+          .filter((item) => !isFinalizedProduction(item.productionStatus))
+          .map((item) => {
+            const daysToDelivery = getDaysToDelivery(item.deliveryDate);
+
+            return {
+              daysToDelivery,
+              deliveryHealthStatus: getDeliveryHealthStatus(daysToDelivery),
+            };
+          });
+
+        setEmployeeSummary({
+          totalCount: employeeProductions.length,
+          activeCount: activeRows.length,
+          overdueCount: activeRows.filter(
+            (item) => item.deliveryHealthStatus === "late",
+          ).length,
+          onTimeCount: activeRows.filter(
+            (item) => item.deliveryHealthStatus === "on_time",
+          ).length,
+        });
+        setProductions(employeeProductions);
+        setBudgets([]);
+        setPurchaseOrders([]);
+        setWasteRecords([]);
+        setActiveEmployeesCount(null);
+        setReceivablePaidTotal(0);
+        return;
+      }
+
+      setEmployeeSummary(null);
+
       const [
         productionsResult,
         employeesResult,
@@ -390,6 +433,7 @@ const LogisticsPage = () => {
 
       setSecondaryWarning(warnings.join(" "));
     } catch (error) {
+      setEmployeeSummary(null);
       setProductions([]);
       setBudgets([]);
       setPurchaseOrders([]);
@@ -406,7 +450,7 @@ const LogisticsPage = () => {
 
   useEffect(() => {
     void loadLogisticsData();
-  }, [filterDateStart, filterDateEnd]);
+  }, [filterDateStart, filterDateEnd, isEmployee]);
 
   const parsedFilterStart = useMemo(
     () => parseDateAtMidnight(filterDateStart),
@@ -751,6 +795,56 @@ const LogisticsPage = () => {
   const activeEmployeesLabel =
     activeEmployeesCount === null ? "N/D" : activeEmployeesCount;
 
+  if (isEmployee) {
+    const summary = employeeSummary ?? {
+      totalCount: 0,
+      activeCount: 0,
+      overdueCount: 0,
+      onTimeCount: 0,
+    };
+
+    return (
+      <DashboardLayout title="Logística" subtitle="Resumo de Produções">
+        <div className="animate-fade-in space-y-6">
+          {requestError && (
+            <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
+              <span>{requestError}</span>
+              <button
+                onClick={() => void loadLogisticsData()}
+                className="px-2 py-1 text-[11px] font-bold rounded border border-destructive/30 hover:bg-destructive/20"
+              >
+                TENTAR NOVAMENTE
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <StatCard
+              title="Quantidade de Produções"
+              value={isLoading ? "..." : summary.totalCount}
+              icon={<Truck className="h-4 w-4" />}
+            />
+            <StatCard
+              title="Produções Ativas"
+              value={isLoading ? "..." : summary.activeCount}
+              icon={<Clock3 className="h-4 w-4" />}
+            />
+            <StatCard
+              title="Produções Atrasadas"
+              value={isLoading ? "..." : summary.overdueCount}
+              icon={<AlertTriangle className="h-4 w-4" />}
+              highlight={summary.overdueCount > 0}
+            />
+            <StatCard
+              title="Produções em Dia"
+              value={isLoading ? "..." : summary.onTimeCount}
+              icon={<CheckCircle2 className="h-4 w-4" />}
+            />
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Logística" subtitle="Entregas e Instalação">

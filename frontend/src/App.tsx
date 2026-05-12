@@ -37,7 +37,13 @@ const DefaultAuthenticatedHome = () => {
 
   return (
     <Navigate
-      to={user.role === "funcionario" ? "/production" : "/financial"}
+      to={
+        user.role === "funcionario"
+          ? "/production"
+          : user.role === "gerente"
+            ? "/budgets"
+            : "/financial"
+      }
       replace
     />
   );
@@ -60,28 +66,40 @@ const App = () => (
 
               <Route element={<RequireAuth />}>
                 <Route path="/" element={<DefaultAuthenticatedHome />} />
-                <Route path="/overview" element={<Index />} />
                 <Route path="/production" element={<ProductionPage />} />
-                <Route path="/logistics" element={<LogisticsHub />} />
                 <Route path="/forbidden" element={<ForbiddenPage />} />
+
+                <Route
+                  element={
+                    <RequireRoles allowedRoles={["admin", "funcionario"]} />
+                  }
+                >
+                  <Route path="/logistics" element={<LogisticsHub />} />
+                </Route>
+
+                <Route
+                  element={<RequireRoles allowedRoles={["admin"]} />}
+                >
+                  <Route path="/overview" element={<Index />} />
+                  <Route path="/products" element={<StockHub />} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/financial" element={<FinancialHub />} />
+                  <Route path="/cliches" element={<ClichesPage />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                </Route>
 
                 <Route
                   element={<RequireRoles allowedRoles={["admin", "gerente"]} />}
                 >
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/employees" element={<EmployeesPage />} />
-                  <Route path="/products" element={<StockHub />} />
                   <Route path="/budgets" element={<BudgetsPage />} />
-                  <Route path="/orders" element={<OrdersPage />} />
-                  <Route path="/financial" element={<FinancialHub />} />
-                  <Route path="/cliches" element={<ClichesPage />} />
                   <Route path="/waste" element={<WastePage />} />
                   <Route
                     path="/purchase-orders"
                     element={<PurchaseOrdersPage />}
                   />
                   <Route path="/pricing" element={<PricingPage />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
                 </Route>
               </Route>
 

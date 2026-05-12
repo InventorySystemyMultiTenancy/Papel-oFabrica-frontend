@@ -6,7 +6,7 @@ import { Modal } from "@/components/Modal";
 import { FormField } from "@/components/FormField";
 import { toast } from "@/components/ui/use-toast";
 import { dispatchInventoryRefresh } from "@/lib/inventory-events";
-import { useAuth, useRoleAccess } from "@/auth/AuthProvider";
+import { useRoleAccess } from "@/auth/AuthProvider";
 import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, createProduct, listProducts } from "@/services/products";
@@ -233,9 +233,7 @@ const createInitialForm = () => ({
 });
 
 const ProductionPage = () => {
-  const { user } = useAuth();
-  const { canCreateProduction, canCompleteProduction, isEmployee } =
-    useRoleAccess();
+  const { canCreateProduction, canCompleteProduction } = useRoleAccess();
 
   const [data, setData] = useState<EmployeeProduction[]>([]);
   const [modal, setModal] = useState(false);
@@ -424,19 +422,8 @@ const ProductionPage = () => {
       return;
     }
 
-    if (isEmployee && !user?.id) {
-      setData([]);
-      setIsMockMode(false);
-      setModeNotice("");
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const employeeId = isEmployee ? user?.id : undefined;
-      const list = await listProductions(
-        employeeId ? { employeeId } : undefined,
-      );
+      const list = await listProductions();
       setData(list);
       setIsMockMode(false);
       setModeNotice("");
@@ -592,7 +579,7 @@ const ProductionPage = () => {
   useEffect(() => {
     void loadProductions();
     void loadStatusOptions();
-  }, [canCreateProduction, canCompleteProduction, isEmployee, user?.id]);
+  }, [canCreateProduction, canCompleteProduction]);
 
   useEffect(() => {
     if (!modal) {
@@ -1683,11 +1670,7 @@ const ProductionPage = () => {
   return (
     <DashboardLayout
       title="Produção"
-      subtitle={
-        isEmployee
-          ? "Minhas produções por funcionário"
-          : "Acompanhamento de Pedidos"
-      }
+      subtitle="Acompanhamento de Pedidos"
       action={
         canCreateProduction ? (
           <button

@@ -45,6 +45,17 @@ export interface UpsertLogisticsMonthlyClosingInput {
   custosAplicadosPreAprovados: number;
 }
 
+export interface LogisticsProductionSummary {
+  totalCount: number;
+  activeCount: number;
+  overdueCount: number;
+  onTimeCount: number;
+}
+
+export interface LogisticsSummary {
+  productions: LogisticsProductionSummary;
+}
+
 const toRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -154,6 +165,29 @@ const normalizeMonthlyClosing = (value: unknown): LogisticsMonthlyClosing | null
     ),
     createdAt: toStringSafe(item.createdAt ?? item.created_at, ""),
     updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
+  };
+};
+
+const normalizeProductionSummary = (
+  value: unknown,
+): LogisticsProductionSummary => {
+  const item = toRecord(value);
+
+  return {
+    totalCount: Math.max(0, Math.trunc(toNumberSafe(item?.totalCount, 0))),
+    activeCount: Math.max(0, Math.trunc(toNumberSafe(item?.activeCount, 0))),
+    overdueCount: Math.max(0, Math.trunc(toNumberSafe(item?.overdueCount, 0))),
+    onTimeCount: Math.max(0, Math.trunc(toNumberSafe(item?.onTimeCount, 0))),
+  };
+};
+
+export const getLogisticsSummary = async (): Promise<LogisticsSummary> => {
+  const payload = await request<unknown>("/logistics/summary");
+  const record = toRecord(payload);
+  const data = toRecord(record?.data) ?? record;
+
+  return {
+    productions: normalizeProductionSummary(data?.productions),
   };
 };
 

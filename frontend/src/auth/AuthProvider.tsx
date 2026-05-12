@@ -127,6 +127,6 @@ export const useRoleAccess = () => {
     canManageTeams: isManagerRole(role),
     canCreateProduction: isManagerRole(role),
     canCompleteProduction: isManagerRole(role),
-    canViewFinancials: isManagerRole(role),
+    canViewFinancials: role === "admin",
   };
 };
