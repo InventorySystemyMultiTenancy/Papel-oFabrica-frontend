@@ -1,6 +1,6 @@
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
-import { Switch } from "@/components/ui/switch";
 import { useLanguage } from "@/i18n/LanguageProvider";
 
 interface TopNavProps {
@@ -12,8 +12,8 @@ interface TopNavProps {
 
 export function TopNav({ title, subtitle, action, onToggleSidebar }: TopNavProps) {
   const { user } = useAuth();
-  const { isItalian, setLanguage, t } = useLanguage();
-  const isAdmin = user?.role === "admin";
+  const { isItalian, t } = useLanguage();
+  const navigate = useNavigate();
   const firstName = user?.name?.trim().split(" ")[0] || "Usuário";
   const welcomeMessage = isItalian
     ? `Benvenuto(a), ${firstName}! Cosa costruiamo oggi?`
@@ -51,26 +51,14 @@ export function TopNav({ title, subtitle, action, onToggleSidebar }: TopNavProps
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2 shrink-0 w-full sm:w-auto justify-end">
-        {isAdmin && (
-          <div className="hidden md:flex items-center gap-2 rounded border border-border px-2 py-1">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {isItalian ? "Italiano" : "Português"}
-            </span>
-            <Switch
-              checked={isItalian}
-              onCheckedChange={(checked) => setLanguage(checked ? "it-IT" : "pt-BR")}
-              aria-label="Alternar idioma para italiano"
-            />
-          </div>
-        )}
-
         {action}
 
-        <button className="hidden sm:inline-flex p-2 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
-          <Search className="h-4 w-4" />
-        </button>
-
-        <button className="hidden sm:inline-flex p-2 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground relative">
+        <button
+          type="button"
+          onClick={() => navigate("/financial")}
+          className="hidden sm:inline-flex p-2 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground relative"
+          aria-label={t("Abrir financeiro")}
+        >
           <Bell className="h-4 w-4" />
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-primary rounded-full" />
         </button>
