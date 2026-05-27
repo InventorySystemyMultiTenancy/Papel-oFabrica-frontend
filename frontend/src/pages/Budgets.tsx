@@ -651,6 +651,28 @@ const formatBusinessDaysLabel = (value: number | null | undefined) => {
   return `${normalized} ${normalized === 1 ? "dia util" : "dias uteis"}`;
 };
 
+const addBusinessDays = (startDate: Date, businessDays: number) => {
+  const daysToAdd = Math.max(0, Math.trunc(Number(businessDays) || 0));
+  const result = new Date(startDate);
+  let addedDays = 0;
+
+  result.setHours(12, 0, 0, 0);
+
+  while (addedDays < daysToAdd) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      addedDays += 1;
+    }
+  }
+
+  return result;
+};
+
+const formatDatePtBr = (date: Date) =>
+  new Intl.DateTimeFormat("pt-BR").format(date);
+
 const formatDateTime = (value: string | null | undefined) => {
   if (!value) {
     return "-";
@@ -678,7 +700,10 @@ const findClientByName = (clientsCatalog: Client[], clientName: string) => {
   }
 
   return clientsCatalog.find(
-    (client) => normalizeName(client.name) === normalized,
+    (client) =>
+      normalizeName(client.name) === normalized ||
+      normalizeName(client.companyName || "") === normalized ||
+      normalizeName(client.contactName || "") === normalized,
   );
 };
 
@@ -3434,7 +3459,6 @@ const BudgetsPage = () => {
 
     pdf.setDrawColor(0, 0, 0);
     pdf.setLineWidth(0.55);
-    pdf.rect(x, bodyY, measureW, bodyH, "S");
 
     points.slice(0, -1).forEach((point, index) => {
       pdf.rect(point, y, points[index + 1] - point, heightMm, "S");
@@ -3760,6 +3784,29 @@ const BudgetsPage = () => {
     setGeneratingPdfId(budget.id);
 
     try {
+      const linkedClient =
+        clientsCatalog.find((client) => client.id === budget.clientId) ||
+        findClientByName(clientsCatalog, budget.clientName);
+      const budgetPdfClientCompany =
+        linkedClient?.companyName?.trim() ||
+        linkedClient?.name?.trim() ||
+        budget.clientName;
+      const budgetPdfResponsible =
+        linkedClient?.name?.trim() ||
+        linkedClient?.contactName?.trim() ||
+        budget.clientName;
+      const budgetPdfEmail = linkedClient?.email?.trim() || "";
+      const budgetPdfPhone =
+        linkedClient?.phone?.trim() ||
+        linkedClient?.secondaryPhone?.trim() ||
+        "";
+      const generatedDeliveryDate =
+        budget.estimatedDeliveryBusinessDays &&
+        budget.estimatedDeliveryBusinessDays > 0
+          ? formatDatePtBr(
+              addBusinessDays(new Date(), budget.estimatedDeliveryBusinessDays),
+            )
+          : "";
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const PW = pdf.internal.pageSize.getWidth(); // 210
@@ -3797,7 +3844,7 @@ const BudgetsPage = () => {
       pdf.setTextColor(0, 0, 0);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(16);
-      pdf.text("Orcamento", PW / 2, y, { align: "center" });
+      pdf.text("Orçamento", PW / 2, y, { align: "center" });
       y += 10;
 
       // ── 3. CAIXA CLIENTE / PROPOSTA ──────────────────────────────────────────
@@ -3831,13 +3878,13 @@ const BudgetsPage = () => {
       const rX = MX + HALF + 3;
       const colW = HALF - 6;
       let bY = y + 6;
-      fieldLine("Cliente", budget.clientName, lX, bY, colW);
+      fieldLine("Cliente", budgetPdfClientCompany, lX, bY, colW);
       bY += 5;
-      fieldLine("Responsavel", "", lX, bY, colW);
+      fieldLine("Responsavel", budgetPdfResponsible, lX, bY, colW);
       bY += 5;
-      fieldLine("E-mail", "", lX, bY, colW);
+      fieldLine("E-mail", budgetPdfEmail, lX, bY, colW);
       bY += 5;
-      fieldLine("Telefone", "", lX, bY, colW);
+      fieldLine("Telefone", budgetPdfPhone, lX, bY, colW);
 
       let rY = y + 6;
       fieldLine(
@@ -3850,9 +3897,7 @@ const BudgetsPage = () => {
       rY += 5;
       fieldLine(
         "Data da Entrega",
-        budget.deliveryDate
-          ? new Date(budget.deliveryDate).toLocaleDateString("pt-BR")
-          : "",
+        generatedDeliveryDate,
         rX,
         rY,
         colW,
@@ -4118,7 +4163,8 @@ const BudgetsPage = () => {
         pdf.text(BUDGET_PDF_VALIDITY_FOOTER, MX, PH - 8);
       }
 
-      const safeClientName = sanitizeFileName(budget.clientName) || "cliente";
+      const safeClientName =
+        sanitizeFileName(budgetPdfClientCompany) || "cliente";
       pdf.save(`orcamento-${budget.id}-${safeClientName}.pdf`);
     } catch {
       window.alert(
