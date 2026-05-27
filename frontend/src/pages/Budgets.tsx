@@ -27,6 +27,7 @@ import {
 } from "@/services/budgets";
 import { Client, listClients } from "@/services/clients";
 import { Product, listProducts } from "@/services/products";
+import type { jsPDF as JsPDFDocument } from "jspdf";
 import {
   type PaperboardConfig,
   type PaperboardConfigInput,
@@ -358,6 +359,49 @@ type PaperboardFormInput = PaperboardConfigInput & {
   quality?: PaperboardQuality;
 };
 
+type TechnicalSheetQuality = "CMCB" | "CMCBC" | "CMCC" | "KMKB" | "KMKBC" | "KMKC";
+
+interface TechnicalSheetForm {
+  clientName: string;
+  openingDate: string;
+  reference: string;
+  model: string;
+  length: string;
+  width: string;
+  height: string;
+  quality: TechnicalSheetQuality;
+  grammage: string;
+  quantity: string;
+  printing: string;
+  colors: string;
+  closing: string;
+  amarrados: string;
+  responsible: string;
+  obs: string;
+}
+
+interface TechnicalSheetCalculations {
+  areaUnitM2: number;
+  unitWeightKg: number;
+  totalWeightKg: number;
+  printer: {
+    widthOne: number;
+    lengthOne: number;
+    widthTwo: number;
+    lengthTwo: number;
+    glueFlap: number;
+    extras: number[];
+    total: number;
+  };
+  scorer: {
+    flapTop: number;
+    bodyHeight: number;
+    flapBottom: number;
+    extras: number[];
+    total: number;
+  };
+}
+
 const PAPERBOARD_QUALITY_GRAMMAGE: Record<PaperboardQuality, number> = {
   CMCB: 511,
   CMCBC: 651,
@@ -465,6 +509,107 @@ const calculatePaperboardUnitPrice = (
     gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
     quantity: 1,
   })?.suggestedPrice ?? 0;
+
+const TECHNICAL_SHEET_QUALITIES: TechnicalSheetQuality[] = [
+  "CMCBC",
+  "CMCB",
+  "CMCC",
+  "KMKBC",
+  "KMKB",
+  "KMKC",
+];
+
+const createInitialTechnicalSheetForm = (): TechnicalSheetForm => ({
+  clientName: "",
+  openingDate: "",
+  reference: "",
+  model: "MALETA",
+  length: "",
+  width: "",
+  height: "",
+  quality: "CMCBC",
+  grammage: String(PAPERBOARD_QUALITY_GRAMMAGE.CMCBC),
+  quantity: "",
+  printing: "",
+  colors: "",
+  closing: "",
+  amarrados: "",
+  responsible: "",
+  obs: "",
+});
+
+const parseTechnicalNumber = (value: string) => {
+  const normalized = value.replace(",", ".").trim();
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatTechnicalNumber = (
+  value: number,
+  options: Intl.NumberFormatOptions = {},
+) =>
+  Number.isFinite(value)
+    ? value.toLocaleString("pt-BR", {
+        maximumFractionDigits: 3,
+        ...options,
+      })
+    : "";
+
+const isTechnicalSheetHeavyQuality = (quality: TechnicalSheetQuality) =>
+  quality.toLowerCase().includes("bc");
+
+const calculateTechnicalSheet = (
+  form: TechnicalSheetForm,
+): TechnicalSheetCalculations => {
+  const length = parseTechnicalNumber(form.length);
+  const width = parseTechnicalNumber(form.width);
+  const height = parseTechnicalNumber(form.height);
+  const quantity = parseTechnicalNumber(form.quantity);
+  const grammageKgM2 = normalizePaperboardGrammage(
+    parseTechnicalNumber(form.grammage),
+  );
+  const heavyQuality = isTechnicalSheetHeavyQuality(form.quality);
+  const sideSmall = heavyQuality ? 6 : 2;
+  const sideLarge = heavyQuality ? 7 : 3;
+  const heightExtra = heavyQuality ? 12 : 5;
+  const glueFlap = heavyQuality ? 40 : 35;
+
+  const printer = {
+    widthOne: width + sideSmall,
+    lengthOne: height + sideLarge,
+    widthTwo: width + sideLarge,
+    lengthTwo: height + sideSmall,
+    glueFlap,
+    extras: [0, 0, 0],
+    total: 0,
+  };
+  printer.total =
+    printer.widthOne +
+    printer.lengthOne +
+    printer.widthTwo +
+    printer.lengthTwo +
+    printer.glueFlap;
+
+  const scorer = {
+    flapTop: width / 2 + sideSmall,
+    bodyHeight: length + heightExtra,
+    flapBottom: width / 2 + sideSmall,
+    extras: [0, 0, 0],
+    total: 0,
+  };
+  scorer.total = scorer.flapTop + scorer.bodyHeight + scorer.flapBottom;
+
+  const areaUnitM2 = (printer.total / 1000) * (scorer.total / 1000);
+  const unitWeightKg = areaUnitM2 * grammageKgM2;
+
+  return {
+    areaUnitM2,
+    unitWeightKg,
+    totalWeightKg: unitWeightKg * quantity,
+    printer,
+    scorer,
+  };
+};
 
 const toPaperboardConfigInput = (
   input: PaperboardFormInput,
@@ -1169,6 +1314,16 @@ const BudgetsPage = () => {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [preApprovingId, setPreApprovingId] = useState<string | null>(null);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+  const [technicalSheetModalOpen, setTechnicalSheetModalOpen] = useState(false);
+  const [selectedBudgetForTechnicalSheet, setSelectedBudgetForTechnicalSheet] =
+    useState<BudgetRow | null>(null);
+  const [technicalSheetForm, setTechnicalSheetForm] = useState(
+    createInitialTechnicalSheetForm,
+  );
+  const [technicalSheetError, setTechnicalSheetError] = useState("");
+  const [isLoadingTechnicalSheet, setIsLoadingTechnicalSheet] = useState(false);
+  const [isGeneratingTechnicalSheet, setIsGeneratingTechnicalSheet] =
+    useState(false);
   const [contractModalOpen, setContractModalOpen] = useState(false);
   const [selectedBudgetForContract, setSelectedBudgetForContract] =
     useState<BudgetRow | null>(null);
@@ -2413,6 +2568,8 @@ const BudgetsPage = () => {
   const detailNewItemCalculatedUnitPrice = detailNewItemUsesPaperboard
     ? resolveMaterialInputUnitPrice(detailNewItem, selectedDetailNewItemProduct)
     : Number(detailNewItem.unitPrice) || 0;
+  const technicalSheetCalculations =
+    calculateTechnicalSheet(technicalSheetForm);
 
   const closeCreateModal = () => {
     setModal(false);
@@ -3173,6 +3330,432 @@ const BudgetsPage = () => {
     setContractModalOpen(true);
   };
 
+  const closeTechnicalSheetModal = () => {
+    setTechnicalSheetModalOpen(false);
+    setSelectedBudgetForTechnicalSheet(null);
+    setTechnicalSheetError("");
+    setTechnicalSheetForm(createInitialTechnicalSheetForm());
+  };
+
+  const openTechnicalSheetModal = async (budget: BudgetRow) => {
+    setSelectedBudgetForTechnicalSheet(budget);
+    setTechnicalSheetError("");
+    setIsLoadingTechnicalSheet(true);
+    setTechnicalSheetModalOpen(true);
+
+    try {
+      const config = await getPaperboardConfig(budget.id);
+      const paperboardItem = budget.items
+        .map((item) => ({
+          item,
+          product: productsCatalog.find(
+            (product) => product.id === item.productId,
+          ),
+        }))
+        .find(({ product }) => product?.isPaperboardMaterial);
+      const inferredQuality =
+        config?.gramatura === PAPERBOARD_QUALITY_GRAMMAGE.CMCB ||
+        paperboardItem?.product?.quality === "CMCB"
+          ? "CMCB"
+          : "CMCBC";
+      const inferredQuantity =
+        config?.quantity ||
+        paperboardItem?.item.quantity ||
+        (budget.items.length === 1 ? budget.items[0].quantity : 0);
+
+      setTechnicalSheetForm({
+        clientName: budget.clientName,
+        openingDate: getTodayInputDate(),
+        reference: "",
+        model: "MALETA",
+        length: String(config?.length || paperboardItem?.product?.length || ""),
+        width: String(config?.width || paperboardItem?.product?.width || ""),
+        height: String(config?.height || paperboardItem?.product?.height || ""),
+        quality: inferredQuality,
+        grammage: String(
+          config?.gramatura ||
+            paperboardItem?.product?.gramatura ||
+            PAPERBOARD_QUALITY_GRAMMAGE[inferredQuality],
+        ),
+        quantity: inferredQuantity ? String(inferredQuantity) : "",
+        printing: "",
+        colors: "",
+        closing: "",
+        amarrados: "",
+        responsible: "",
+        obs: "",
+      });
+    } catch (error) {
+      setTechnicalSheetError(
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel carregar os dados da ficha tecnica.",
+        ),
+      );
+    } finally {
+      setIsLoadingTechnicalSheet(false);
+    }
+  };
+
+  const drawTechnicalSheetBox = (
+    pdf: JsPDFDocument,
+    x: number,
+    y: number,
+    widthMm: number,
+    heightMm: number,
+    calculations: TechnicalSheetCalculations,
+  ) => {
+    const measureW = 14;
+    const drawingX = x + measureW;
+    const mainW = widthMm - measureW - 22;
+    const topH = heightMm * 0.22;
+    const bodyH = heightMm * 0.56;
+    const bottomH = heightMm - topH - bodyH;
+    const bodyY = y + topH;
+    const bottomY = bodyY + bodyH;
+    const segments = [
+      calculations.printer.widthOne,
+      calculations.printer.lengthOne,
+      calculations.printer.widthTwo,
+      calculations.printer.lengthTwo,
+    ];
+    const mainTotal = Math.max(
+      1,
+      segments.reduce((sum, value) => sum + value, 0),
+    );
+    const points: number[] = [drawingX];
+    segments.reduce((cursor, value) => {
+      const next = cursor + (value / mainTotal) * mainW;
+      points.push(next);
+      return next;
+    }, drawingX);
+    const drawingRight = points[points.length - 1];
+    const topMeasureY = y - 2;
+
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.55);
+    pdf.rect(x, bodyY, measureW, bodyH, "S");
+
+    points.slice(0, -1).forEach((point, index) => {
+      pdf.rect(point, y, points[index + 1] - point, heightMm, "S");
+    });
+    pdf.line(drawingX, bodyY, drawingRight, bodyY);
+    pdf.line(drawingX, bottomY, drawingRight, bottomY);
+
+    const tabW = 4.5;
+    pdf.line(drawingRight, bodyY, drawingRight + tabW, bodyY + 5);
+    pdf.line(drawingRight + tabW, bodyY + 5, drawingRight + tabW, bottomY - 5);
+    pdf.line(drawingRight + tabW, bottomY - 5, drawingRight, bottomY);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    segments.forEach((segment, index) => {
+      const centerX = (points[index] + points[index + 1]) / 2;
+      pdf.text(
+        formatTechnicalNumber(segment, { maximumFractionDigits: 0 }),
+        centerX,
+        topMeasureY,
+        { align: "center" },
+      );
+    });
+    pdf.text(
+      formatTechnicalNumber(calculations.scorer.flapTop, {
+        maximumFractionDigits: 0,
+      }),
+      x + measureW / 2,
+      topMeasureY,
+      { align: "center" },
+    );
+    pdf.text(
+      formatTechnicalNumber(calculations.scorer.bodyHeight, {
+        maximumFractionDigits: 0,
+      }),
+      x + measureW / 2,
+      bodyY + bodyH / 2 + 2,
+      { align: "center" },
+    );
+    pdf.text(
+      formatTechnicalNumber(calculations.scorer.flapBottom, {
+        maximumFractionDigits: 0,
+      }),
+      x + measureW / 2,
+      y + heightMm + 2,
+      { align: "center" },
+    );
+
+    const glueX = drawingRight + 6;
+    const arrowY = y - 5;
+    pdf.text(
+      formatTechnicalNumber(calculations.printer.glueFlap, {
+        maximumFractionDigits: 0,
+      }),
+      glueX,
+      topMeasureY,
+    );
+    pdf.setLineWidth(0.75);
+    pdf.line(glueX + 10, arrowY, glueX + 22, arrowY);
+    pdf.line(glueX + 22, arrowY, glueX + 19, arrowY - 2);
+    pdf.line(glueX + 22, arrowY, glueX + 19, arrowY + 2);
+    pdf.text(
+      formatTechnicalNumber(calculations.printer.total, {
+        maximumFractionDigits: 0,
+      }),
+      glueX + 26,
+      topMeasureY,
+    );
+
+    const downArrowX = x + measureW / 2;
+    const downArrowTop = y + heightMm + 6;
+    pdf.line(downArrowX, downArrowTop, downArrowX, downArrowTop + 6);
+    pdf.line(downArrowX, downArrowTop + 6, downArrowX - 2, downArrowTop + 3);
+    pdf.line(downArrowX, downArrowTop + 6, downArrowX + 2, downArrowTop + 3);
+    pdf.text(
+      formatTechnicalNumber(calculations.scorer.total, {
+        maximumFractionDigits: 0,
+      }),
+      downArrowX,
+      downArrowTop + 13,
+      { align: "center" },
+    );
+  };
+
+  const generateTechnicalSheetPdf = async () => {
+    if (!selectedBudgetForTechnicalSheet) {
+      return;
+    }
+
+    const length = parseTechnicalNumber(technicalSheetForm.length);
+    const width = parseTechnicalNumber(technicalSheetForm.width);
+    const height = parseTechnicalNumber(technicalSheetForm.height);
+    const grammage = parseTechnicalNumber(technicalSheetForm.grammage);
+    const quantity = parseTechnicalNumber(technicalSheetForm.quantity);
+
+    if (length <= 0 || width <= 0 || height <= 0 || grammage <= 0 || quantity <= 0) {
+      setTechnicalSheetError(
+        "Preencha dimensoes, gramatura e quantidade para gerar a ficha tecnica.",
+      );
+      return;
+    }
+
+    setIsGeneratingTechnicalSheet(true);
+    setTechnicalSheetError("");
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      const PW = pdf.internal.pageSize.getWidth();
+      const PH = pdf.internal.pageSize.getHeight();
+      const MX = 8;
+      const yTop = 8;
+      const calc = calculateTechnicalSheet(technicalSheetForm);
+
+      pdf.setFillColor(248, 250, 252);
+      pdf.rect(0, 0, PW, PH, "F");
+      pdf.setDrawColor(15, 23, 42);
+      pdf.setLineWidth(0.35);
+      pdf.rect(MX, yTop, PW - MX * 2, PH - yTop * 2, "S");
+      pdf.setFillColor(226, 232, 240);
+      pdf.rect(MX, yTop, PW - MX * 2, 15, "F");
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(13);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text("4D CARTONAGENS", PW / 2 - 35, yTop + 9, { align: "center" });
+      pdf.text("PEDIDO", PW - MX - 32, yTop + 9);
+      pdf.setFontSize(9);
+      pdf.text("AMOSTRA", MX + 8, yTop + 22);
+      pdf.text("Cliente.:", MX + 58, yTop + 22);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(technicalSheetForm.clientName, MX + 78, yTop + 22);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Data da Abertura", PW - MX - 45, yTop + 22);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(
+        technicalSheetForm.openingDate
+          ? new Date(`${technicalSheetForm.openingDate}T00:00:00`).toLocaleDateString("pt-BR")
+          : "",
+        PW - MX - 20,
+        yTop + 31,
+        { align: "right" },
+      );
+
+      const leftX = MX + 8;
+      const rightX = PW - MX - 95;
+      const field = (label: string, value: string, x: number, y: number) => {
+        pdf.setTextColor(15, 23, 42);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(label, x, y);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(value || "", x + pdf.getTextWidth(label) + 2, y);
+      };
+      const sectionBox = (
+        title: string,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+      ) => {
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(203, 213, 225);
+        pdf.setLineWidth(0.35);
+        pdf.rect(x, y, w, h, "FD");
+        pdf.setFillColor(15, 23, 42);
+        pdf.rect(x, y, w, 6, "F");
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(6.5);
+        pdf.text(title, x + 2.5, y + 4.2);
+        pdf.setTextColor(15, 23, 42);
+      };
+
+      field("Referencia.:", technicalSheetForm.reference, leftX, yTop + 42);
+      field("Modelo.:", technicalSheetForm.model, leftX + 70, yTop + 42);
+      field("Area da Unidade (m2).:", formatTechnicalNumber(calc.areaUnitM2), rightX, yTop + 42);
+      field("Peso da Unidade( Kg).:", formatTechnicalNumber(calc.unitWeightKg), rightX, yTop + 50);
+      field("Peso Total.: ( Kg ).:", formatTechnicalNumber(calc.totalWeightKg), rightX, yTop + 58);
+
+      field(
+        "Dimensoes Internas (mm).:",
+        `${formatTechnicalNumber(height, { maximumFractionDigits: 0 })} X ${formatTechnicalNumber(width, { maximumFractionDigits: 0 })} X ${formatTechnicalNumber(length, { maximumFractionDigits: 0 })}`,
+        leftX,
+        yTop + 58,
+      );
+      field("Qualidade.:", technicalSheetForm.quality, leftX, yTop + 72);
+      field("Gramatura.:", formatTechnicalNumber(grammage), leftX + 70, yTop + 72);
+      field("Quantidade.:", formatTechnicalNumber(quantity, { maximumFractionDigits: 0 }), leftX + 138, yTop + 72);
+      field("Impressao", technicalSheetForm.printing, rightX, yTop + 72);
+      field("Cores.:", technicalSheetForm.colors, rightX + 50, yTop + 72);
+      field("Fechamento", technicalSheetForm.closing, leftX, yTop + 82);
+
+      drawTechnicalSheetBox(pdf, leftX + 8, yTop + 88, 145, 38, calc);
+
+      const tableY = yTop + 151;
+      const formatBoxW = 128;
+      const formatBoxH = 19;
+      const drawFormatRow = (
+        label: string,
+        values: number[],
+        total: number,
+        x: number,
+        y: number,
+      ) => {
+        sectionBox(label, x, y, formatBoxW, formatBoxH);
+        const valueY = y + 12.5;
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(7.2);
+        const allValues = [...values, total];
+        allValues.forEach((value, index) => {
+          const itemX = x + 12 + index * 13.5;
+          const isTotal = index === allValues.length - 1;
+          if (isTotal) {
+            pdf.setFillColor(226, 232, 240);
+            pdf.setDrawColor(148, 163, 184);
+            pdf.rect(itemX - 5, valueY - 4.8, 13, 6.8, "FD");
+            pdf.setFont("helvetica", "bold");
+          } else {
+            pdf.setFont("helvetica", "normal");
+          }
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(
+            formatTechnicalNumber(value, { maximumFractionDigits: 0 }),
+            itemX,
+            valueY,
+            { align: "center" },
+          );
+          if (index < allValues.length - 1) {
+            pdf.setTextColor(100, 116, 139);
+            pdf.text("x", itemX + 6.7, valueY);
+          }
+        });
+      };
+
+      drawFormatRow(
+        "FORMATO IMPRESSORA.:",
+        [
+          calc.printer.widthOne,
+          calc.printer.lengthOne,
+          calc.printer.widthTwo,
+          calc.printer.lengthTwo,
+          calc.printer.glueFlap,
+          ...calc.printer.extras,
+        ],
+        calc.printer.total,
+        leftX,
+        tableY,
+      );
+      drawFormatRow(
+        "FORMATO RISCADOR.:",
+        [
+          calc.scorer.flapTop,
+          calc.scorer.bodyHeight,
+          calc.scorer.flapBottom,
+          ...calc.scorer.extras,
+        ],
+        calc.scorer.total,
+        leftX + formatBoxW + 8,
+        tableY,
+      );
+
+      const infoY = tableY + formatBoxH + 4;
+      sectionBox("PRODUCAO E CONTROLE", leftX, infoY, 154, 17);
+      field("AMARRADOS:", technicalSheetForm.amarrados, leftX + 4, infoY + 11);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(6.4);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(
+        "CONTAGEM DE AMARRADOS: __________________  SOBRA: _____________",
+        leftX + 4,
+        infoY + 15,
+      );
+      sectionBox("RESPONSAVEL E OBS.", leftX + 162, infoY, 103, 17);
+      field("RESPONSAVEL.:", technicalSheetForm.responsible, leftX + 166, infoY + 11);
+      field("Obs.:", technicalSheetForm.obs, leftX + 166, infoY + 15);
+
+      const checklistW = 88;
+      const checklistX = PW - MX - checklistW - 4;
+      const checklistY = yTop + 96;
+      const rowH = 9;
+      const colW = [31, 19, 19, 19];
+      pdf.setFillColor(255, 255, 255);
+      pdf.setDrawColor(15, 23, 42);
+      pdf.setLineWidth(0.45);
+      pdf.rect(checklistX, checklistY, checklistW, rowH * 5, "FD");
+      pdf.setFillColor(241, 245, 249);
+      pdf.rect(checklistX, checklistY, checklistW, rowH, "F");
+      ["DATA", "QUANT.", "VISTO"].forEach((label, index) => {
+        pdf.setTextColor(15, 23, 42);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(label, checklistX + colW[0] + colW[1] * index + colW[1] / 2, checklistY + 6, {
+          align: "center",
+        });
+      });
+      ["RISCADOR", "IMPRESSORA", "C. VINCO", "ACABAM."].forEach((label, row) => {
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(label, checklistX + 2, checklistY + rowH * (row + 1) + 6);
+      });
+      let lineX = checklistX + colW[0];
+      colW.slice(1).forEach((w) => {
+        pdf.line(lineX, checklistY, lineX, checklistY + rowH * 5);
+        lineX += w;
+      });
+      for (let row = 1; row <= 4; row += 1) {
+        pdf.line(checklistX, checklistY + rowH * row, checklistX + colW.reduce((a, b) => a + b, 0), checklistY + rowH * row);
+      }
+
+      const safeClientName =
+        sanitizeFileName(technicalSheetForm.clientName) || "cliente";
+      pdf.save(
+        `ficha-tecnica-${selectedBudgetForTechnicalSheet.id}-${safeClientName}.pdf`,
+      );
+    } catch {
+      setTechnicalSheetError(
+        "Nao foi possivel gerar o PDF da ficha tecnica. Tente novamente.",
+      );
+    } finally {
+      setIsGeneratingTechnicalSheet(false);
+    }
+  };
+
   const generateBudgetPdf = async (budget: BudgetRow) => {
     setGeneratingPdfId(budget.id);
 
@@ -3863,7 +4446,6 @@ const BudgetsPage = () => {
         </span>
       ),
     },
-    { key: "description", header: "Descrição" },
     {
       key: "costsAppliedValue",
       header: "Custos aplicados",
@@ -3900,6 +4482,16 @@ const BudgetsPage = () => {
             className="px-2 py-1 text-[11px] font-bold rounded border border-border text-foreground hover:bg-secondary transition-colors"
           >
             DETALHE
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void openTechnicalSheetModal(b);
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded border border-border text-foreground hover:bg-secondary transition-colors"
+          >
+            VER FICHA TÉCNICA
           </button>
 
           <button
@@ -5713,6 +6305,327 @@ const BudgetsPage = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={technicalSheetModalOpen}
+        onClose={closeTechnicalSheetModal}
+        title={`Ficha tecnica • ${
+          selectedBudgetForTechnicalSheet?.clientName || "Cliente"
+        }`}
+        width="max-w-5xl"
+      >
+        <div className="space-y-5">
+          {isLoadingTechnicalSheet ? (
+            <p className="text-sm text-muted-foreground">
+              Carregando dados da ficha tecnica...
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <FormField
+                  label="Cliente"
+                  value={technicalSheetForm.clientName}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      clientName: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Data da abertura"
+                  type="date"
+                  value={technicalSheetForm.openingDate}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      openingDate: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Referencia"
+                  value={technicalSheetForm.reference}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      reference: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Modelo"
+                  value={technicalSheetForm.model}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      model: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                <FormField
+                  label="Comprimento (mm)"
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={technicalSheetForm.length}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      length: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Largura (mm)"
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={technicalSheetForm.width}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      width: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Altura (mm)"
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={technicalSheetForm.height}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      height: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Qualidade"
+                  as="select"
+                  value={technicalSheetForm.quality}
+                  onChange={(e) => {
+                    const quality = e.target.value as TechnicalSheetQuality;
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      quality,
+                      grammage:
+                        quality === "CMCB"
+                          ? String(PAPERBOARD_QUALITY_GRAMMAGE.CMCB)
+                          : quality === "CMCBC"
+                            ? String(PAPERBOARD_QUALITY_GRAMMAGE.CMCBC)
+                            : current.grammage,
+                    }));
+                  }}
+                  options={TECHNICAL_SHEET_QUALITIES.map((quality) => ({
+                    value: quality,
+                    label: quality,
+                  }))}
+                />
+                <FormField
+                  label="Gramatura"
+                  type="number"
+                  min={0}
+                  step="0.001"
+                  value={technicalSheetForm.grammage}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      grammage: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Quantidade"
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={technicalSheetForm.quantity}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      quantity: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <FormField
+                  label="Impressao"
+                  value={technicalSheetForm.printing}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      printing: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Cores"
+                  value={technicalSheetForm.colors}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      colors: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Fechamento"
+                  value={technicalSheetForm.closing}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      closing: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Amarrados"
+                  value={technicalSheetForm.amarrados}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      amarrados: e.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Responsavel"
+                  value={technicalSheetForm.responsible}
+                  onChange={(e) =>
+                    setTechnicalSheetForm((current) => ({
+                      ...current,
+                      responsible: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <FormField
+                label="Obs."
+                as="textarea"
+                value={technicalSheetForm.obs}
+                onChange={(e) =>
+                  setTechnicalSheetForm((current) => ({
+                    ...current,
+                    obs: e.target.value,
+                  }))
+                }
+              />
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                    Area e peso
+                  </p>
+                  <p>
+                    Area da unidade:{" "}
+                    <strong>
+                      {formatTechnicalNumber(
+                        technicalSheetCalculations.areaUnitM2,
+                      )}{" "}
+                      m2
+                    </strong>
+                  </p>
+                  <p>
+                    Peso da unidade:{" "}
+                    <strong>
+                      {formatTechnicalNumber(
+                        technicalSheetCalculations.unitWeightKg,
+                      )}{" "}
+                      kg
+                    </strong>
+                  </p>
+                  <p>
+                    Peso total:{" "}
+                    <strong>
+                      {formatTechnicalNumber(
+                        technicalSheetCalculations.totalWeightKg,
+                      )}{" "}
+                      kg
+                    </strong>
+                  </p>
+                </div>
+
+                <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                    Formato impressora
+                  </p>
+                  <p>
+                    {[
+                      technicalSheetCalculations.printer.widthOne,
+                      technicalSheetCalculations.printer.lengthOne,
+                      technicalSheetCalculations.printer.widthTwo,
+                      technicalSheetCalculations.printer.lengthTwo,
+                      technicalSheetCalculations.printer.glueFlap,
+                      ...technicalSheetCalculations.printer.extras,
+                      technicalSheetCalculations.printer.total,
+                    ]
+                      .map((value) =>
+                        formatTechnicalNumber(value, {
+                          maximumFractionDigits: 0,
+                        }),
+                      )
+                      .join(" x ")}
+                  </p>
+                </div>
+
+                <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                    Formato riscador
+                  </p>
+                  <p>
+                    {[
+                      technicalSheetCalculations.scorer.flapTop,
+                      technicalSheetCalculations.scorer.bodyHeight,
+                      technicalSheetCalculations.scorer.flapBottom,
+                      ...technicalSheetCalculations.scorer.extras,
+                      technicalSheetCalculations.scorer.total,
+                    ]
+                      .map((value) =>
+                        formatTechnicalNumber(value, {
+                          maximumFractionDigits: 0,
+                        }),
+                      )
+                      .join(" x ")}
+                  </p>
+                </div>
+              </div>
+
+              {technicalSheetError && (
+                <p className="text-sm text-destructive">{technicalSheetError}</p>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeTechnicalSheetModal}
+                  className="px-4 py-2 text-sm rounded border border-border hover:bg-secondary transition-colors text-muted-foreground"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void generateTechnicalSheetPdf()}
+                  disabled={isGeneratingTechnicalSheet}
+                  className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingTechnicalSheet
+                    ? "Gerando..."
+                    : "Gerar PDF ficha tecnica"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </Modal>
 
       <Modal
