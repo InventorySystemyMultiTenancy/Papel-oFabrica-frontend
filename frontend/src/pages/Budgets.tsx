@@ -3581,6 +3581,11 @@ const BudgetsPage = () => {
       pdf.setFillColor(226, 232, 240);
       pdf.rect(MX, yTop, PW - MX * 2, 15, "F");
 
+      const logoDataUrl = await loadLogoDataUrl();
+      if (logoDataUrl) {
+        pdf.addImage(logoDataUrl, "JPEG", MX + 3, yTop + 2, 11, 11);
+      }
+
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(13);
       pdf.setTextColor(15, 23, 42);
