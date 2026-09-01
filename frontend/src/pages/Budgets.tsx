@@ -5096,8 +5096,15 @@ const BudgetsPage = () => {
                     <FormField
                       label="Gramatura (g/m²)"
                       type="number"
+                      min={0}
+                      step="1"
                       value={createClaForm.gramatura || ""}
-                      disabled
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          gramatura: Number(e.target.value),
+                        }))
+                      }
                     />
                     <FormField
                       label="Quantidade"
