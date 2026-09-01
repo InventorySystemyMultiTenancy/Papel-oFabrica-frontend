@@ -11,6 +11,7 @@ import { orders as mockOrders, ProductionMaterial } from "@/data/mockData";
 import { Client, listClients } from "@/services/clients";
 import { Product, createProduct, listProducts } from "@/services/products";
 import { getBudgetById, listBudgets, type Budget } from "@/services/budgets";
+import { ApiError } from "@/services/api";
 import { getPaperboardConfig, type PaperboardConfig } from "@/services/paperboard";
 import {
   ApprovedBudgetForProduction,
@@ -25,6 +26,7 @@ import {
   ProductionShareError,
   createProductionShareLink,
   createProduction,
+  deleteProduction,
   formatStockDetailMessage,
   listProductionImages,
   listApprovedBudgetsForProduction,
@@ -237,6 +239,7 @@ const ProductionPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [requestError, setRequestError] = useState("");
   const [modeNotice, setModeNotice] = useState("");
   const [isMockMode, setIsMockMode] = useState(false);
@@ -1436,6 +1439,64 @@ const ProductionPage = () => {
     }
   };
 
+  const handleDeleteProduction = async (order: EmployeeProduction) => {
+    if (deletingId || updatingId || sharingId) {
+      return;
+    }
+
+    const Swal = (await import("sweetalert2")).default;
+    const result = await Swal.fire({
+      title: "Excluir produção?",
+      html: `A produção de <b>${order.clientName}</b> será excluída permanentemente.<br/>Esta ação não pode ser desfeita.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Sim, excluir",
+      cancelButtonText: "Cancelar",
+    });
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    if (isMockMode) {
+      setData((current) => current.filter((item) => item.id !== order.id));
+      toast({ title: "Produção excluída" });
+      return;
+    }
+
+    setDeletingId(order.id);
+
+    try {
+      await deleteProduction(order.id);
+      setData((current) => current.filter((item) => item.id !== order.id));
+      toast({ title: "Produção excluída com sucesso" });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/login"
+        ) {
+          window.location.assign("/login");
+        }
+
+        return;
+      }
+
+      const message =
+        error instanceof Error ? error.message : "Falha ao excluir produção.";
+
+      toast({
+        variant: "destructive",
+        title: "Não foi possível excluir a produção",
+        description: message,
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const isAdvancingSelected = Boolean(
     selectedToAdvance && updatingId === selectedToAdvance.id,
   );
@@ -1558,6 +1619,7 @@ const ProductionPage = () => {
             render: (o: EmployeeProduction) => {
               const isSharingCurrent = sharingId === o.id;
               const isAdvancingCurrent = updatingId === o.id;
+              const isDeletingCurrent = deletingId === o.id;
               const isManagingImagesCurrent =
                 selectedForImages?.id === o.id &&
                 (isLoadingImages || isUploadingImages);
@@ -1616,6 +1678,22 @@ const ProductionPage = () => {
                   >
                     <Pencil className="h-3 w-3" />
                     EDITAR ETAPAS
+                  </button>
+
+                  <button
+                    disabled={
+                      Boolean(deletingId) ||
+                      Boolean(updatingId) ||
+                      Boolean(sharingId)
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteProduction(o);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {isDeletingCurrent ? "EXCLUINDO..." : "EXCLUIR"}
                   </button>
                 </div>
               );

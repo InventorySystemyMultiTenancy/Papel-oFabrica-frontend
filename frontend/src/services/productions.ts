@@ -1563,3 +1563,9 @@ export const completeProduction = async (productionId: string) => {
     });
   }
 };
+
+export const deleteProduction = async (productionId: string): Promise<void> => {
+  await request<unknown>(`/productions/${productionId}`, {
+    method: "DELETE",
+  });
+};

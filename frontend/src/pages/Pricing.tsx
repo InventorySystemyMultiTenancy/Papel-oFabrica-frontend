@@ -6,7 +6,16 @@ import {
   type QuotationInput,
   type QuotationResult,
 } from "@/services/pricing";
-import { Calculator, FileDown, Plus, Trash2, Zap } from "lucide-react";
+import {
+  Calculator,
+  Check,
+  FileDown,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 
 const PAPERBOARD_PRICE_PER_KG = 14;
 const PAPERBOARD_QUALITY_GRAMMAGE: Record<QuotationInput["quality"], number> = {
@@ -33,7 +42,7 @@ const DEFAULT_INPUT: QuotationInput = {
   quantities: [],
 };
 
-const TAX_PERCENTAGE = 28;
+const DEFAULT_TAX_PERCENTAGE = 28;
 
 export default function PricingPage() {
   const { toast } = useToast();
@@ -42,6 +51,9 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [newQty, setNewQty] = useState("");
   const [taxApplied, setTaxApplied] = useState(false);
+  const [taxPercentage, setTaxPercentage] = useState(DEFAULT_TAX_PERCENTAGE);
+  const [isEditingTaxPercentage, setIsEditingTaxPercentage] = useState(false);
+  const [taxPercentageDraft, setTaxPercentageDraft] = useState("");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const handleCalculate = async (e: React.FormEvent) => {
@@ -82,7 +94,7 @@ export default function PricingPage() {
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const PW = pdf.internal.pageSize.getWidth();
       const MX = 15;
-      const taxMultiplier = taxApplied ? 1 + TAX_PERCENTAGE / 100 : 1;
+      const taxMultiplier = taxApplied ? 1 + taxPercentage / 100 : 1;
       let y = 20;
 
       pdf.setFont("helvetica", "bold");
@@ -209,7 +221,7 @@ export default function PricingPage() {
         pdf.setFontSize(8.5);
         pdf.setTextColor(100, 116, 139);
         pdf.text(
-          `* Valores já incluem imposto de ${TAX_PERCENTAGE}%.`,
+          `* Valores já incluem imposto de ${taxPercentage}%.`,
           MX,
           y,
         );
@@ -267,6 +279,31 @@ export default function PricingPage() {
 
   const num = (v: string) => (v === "" ? 0 : Number(v));
 
+  const handleEditTaxPercentage = () => {
+    setTaxPercentageDraft(String(taxPercentage));
+    setIsEditingTaxPercentage(true);
+  };
+
+  const handleCancelEditTaxPercentage = () => {
+    setIsEditingTaxPercentage(false);
+    setTaxPercentageDraft("");
+  };
+
+  const handleSaveTaxPercentage = () => {
+    const value = Number(taxPercentageDraft);
+
+    if (!Number.isFinite(value) || value < 0) {
+      toast({
+        title: "Informe uma porcentagem válida",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setTaxPercentage(value);
+    setIsEditingTaxPercentage(false);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -285,7 +322,52 @@ export default function PricingPage() {
           className="grid grid-cols-1 lg:grid-cols-2 gap-6"
         >
           <div className="border border-border rounded-lg p-5 bg-card space-y-4">
-            <h2 className="font-semibold">Cálculo CLA da Caixa (mm)</h2>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="font-semibold">Cálculo CLA da Caixa (mm)</h2>
+              {isEditingTaxPercentage ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    autoFocus
+                    value={taxPercentageDraft}
+                    onChange={(e) => setTaxPercentageDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveTaxPercentage();
+                      if (e.key === "Escape") handleCancelEditTaxPercentage();
+                    }}
+                    className="w-16 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                  <button
+                    type="button"
+                    onClick={handleSaveTaxPercentage}
+                    title="Salvar"
+                    className="p-1 rounded hover:bg-green-500/10 text-green-600"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEditTaxPercentage}
+                    title="Cancelar"
+                    className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEditTaxPercentage}
+                  title="Editar porcentagem de imposto"
+                  className="flex items-center gap-1.5 text-xs font-bold border border-border px-2.5 py-1 rounded-lg hover:bg-accent"
+                >
+                  <Pencil className="h-3 w-3" /> Imposto {taxPercentage}%
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-3">
               {(["comprimentoMm", "larguraMm", "alturaMm"] as const).map(
                 (key) => (
@@ -417,7 +499,7 @@ export default function PricingPage() {
             >
               {taxApplied
                 ? "Aplicado imposto (clique para remover)"
-                : `Adicionar imposto (${TAX_PERCENTAGE}%)`}
+                : `Adicionar imposto (${taxPercentage}%)`}
             </button>
 
             <button
@@ -438,7 +520,7 @@ export default function PricingPage() {
                 <h2 className="font-semibold">Resultado do Cálculo</h2>
                 {taxApplied && (
                   <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
-                    Imposto de {TAX_PERCENTAGE}% incluso
+                    Imposto de {taxPercentage}% incluso
                   </span>
                 )}
               </div>
@@ -507,7 +589,7 @@ export default function PricingPage() {
                 <tbody className="divide-y divide-border">
                   {result.breakdowns.map((breakdown) => {
                     const taxMultiplier = taxApplied
-                      ? 1 + TAX_PERCENTAGE / 100
+                      ? 1 + taxPercentage / 100
                       : 1;
 
                     return (
