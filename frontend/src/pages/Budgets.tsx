@@ -253,6 +253,21 @@ const PAYMENT_TERMS_PRESETS = [
   "Ato + boleto 15/30/45 dias",
 ].join("\n");
 
+const buildBoletoPaymentTerms = (days: number, installments: number) => {
+  const dueDays = Array.from(
+    { length: Math.max(1, installments) },
+    (_, index) => (index + 1) * Math.max(1, days),
+  );
+
+  return `Boleto ${dueDays.join("/")} dias`;
+};
+
+const buildAutoBudgetDescription = (
+  clientName: string,
+  category: BudgetCategory,
+) =>
+  `Orçamento ${formatCategory(category)} para ${clientName || "cliente"}.`;
+
 const DEFAULT_ARCHITECTURE_LINES: ProposalSectionLine[] = [
   { text: "Projeto ou laudo conforme layout aprovado.", indentLevel: 0 },
   { text: "A.R.T. do sistema e da execucao da obra.", indentLevel: 0 },
@@ -1301,7 +1316,7 @@ const createInitialBudgetForm = () => ({
   description: "",
   estimatedDeliveryBusinessDays: "",
   notes: "",
-  paymentTerms: PAYMENT_TERMS_PRESETS,
+  paymentTerms: "",
   laborCost: 0,
   costsApplicableValue: 0,
   profitMargin: 35,
@@ -1438,6 +1453,9 @@ const BudgetsPage = () => {
   const [detailNewItem, setDetailNewItem] = useState(createEmptyMaterialInput);
   // CLA mode for creation
   const [createUseCla, setCreateUseCla] = useState(false);
+  const [showBoletoPicker, setShowBoletoPicker] = useState(false);
+  const [boletoDays, setBoletoDays] = useState(30);
+  const [boletoInstallments, setBoletoInstallments] = useState(1);
   const [createClaForm, setCreateClaForm] = useState<PaperboardFormInput>({
     length: 0,
     width: 0,
@@ -2608,6 +2626,9 @@ const BudgetsPage = () => {
     setApplicableCostsFieldErrors({});
     setNewItem(createEmptyMaterialInput());
     setCreateUseCla(false);
+    setShowBoletoPicker(false);
+    setBoletoDays(30);
+    setBoletoInstallments(1);
     setCreateClaForm({
       length: 0,
       width: 0,
@@ -2637,11 +2658,6 @@ const BudgetsPage = () => {
 
     if (!client) {
       setFormError("Selecione um cliente válido.");
-      return;
-    }
-
-    if (!form.description.trim()) {
-      setFormError("Informe a descrição do orçamento.");
       return;
     }
 
@@ -2730,7 +2746,9 @@ const BudgetsPage = () => {
       const created = await createBudget({
         clientName: client.name,
         category: form.category,
-        description: form.description.trim(),
+        description: form.description.trim()
+          ? form.description.trim()
+          : buildAutoBudgetDescription(client.name, form.category),
         deliveryDate: null,
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
         totalPrice: finalPriceWithExpenses,
@@ -4745,72 +4763,83 @@ const BudgetsPage = () => {
             )}
 
             <FormField
-              label="Descrição"
-              as="textarea"
-              value={form.description}
+              label="Prazo estimado de entrega (dias úteis previstos)"
+              type="number"
+              min={1}
+              step="1"
+              value={form.estimatedDeliveryBusinessDays}
               onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
+                setForm({
+                  ...form,
+                  estimatedDeliveryBusinessDays: e.target.value,
+                })
               }
-              placeholder={PROPOSAL_DESCRIPTION_PLACEHOLDER}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Prazo estimado de entrega (dias úteis previstos)"
-                type="number"
-                min={1}
-                step="1"
-                value={form.estimatedDeliveryBusinessDays}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    estimatedDeliveryBusinessDays: e.target.value,
-                  })
-                }
-              />
-              <FormField
-                label="Observações"
-                as="textarea"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder={PROPOSAL_NOTES_PLACEHOLDER}
-              />
-            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                Forma de pagamento
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowBoletoPicker((current) => !current)}
+                className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                  form.paymentTerms.trim()
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-secondary"
+                }`}
+              >
+                Boleto
+              </button>
 
-            <FormField
-              label="Condições comerciais para PDF"
-              as="textarea"
-              value={form.paymentTerms}
-              onChange={(e) =>
-                setForm({ ...form, paymentTerms: e.target.value })
-              }
-              placeholder={DEFAULT_BUDGET_PDF_PAYMENT_TERMS}
-            />
+              {showBoletoPicker && (
+                <div className="mt-3 flex flex-wrap items-end gap-3 border border-border rounded p-3">
+                  <FormField
+                    label="Vencimento a cada (dias)"
+                    type="number"
+                    min={1}
+                    step="1"
+                    value={boletoDays}
+                    onChange={(e) =>
+                      setBoletoDays(Math.max(1, Number(e.target.value) || 1))
+                    }
+                  />
+                  <FormField
+                    label="Quantidade de parcelas"
+                    type="number"
+                    min={1}
+                    step="1"
+                    value={boletoInstallments}
+                    onChange={(e) =>
+                      setBoletoInstallments(
+                        Math.max(1, Number(e.target.value) || 1),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((current) => ({
+                        ...current,
+                        paymentTerms: buildBoletoPaymentTerms(
+                          boletoDays,
+                          boletoInstallments,
+                        ),
+                      }));
+                      setShowBoletoPicker(false);
+                    }}
+                    className="px-3 py-1.5 text-[11px] font-bold rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                  >
+                    APLICAR
+                  </button>
+                </div>
+              )}
 
-            <div className="flex flex-wrap gap-2 -mt-2">
-              {[
-                "Ato",
-                "Boleto 15 dias",
-                "Boleto 30 dias",
-                "Boleto 45 dias",
-                "Ato + boleto 15/30/45 dias",
-              ].map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() =>
-                    setForm((current) => ({
-                      ...current,
-                      paymentTerms: current.paymentTerms.trim()
-                        ? `${current.paymentTerms}\n${preset}`
-                        : preset,
-                    }))
-                  }
-                  className="px-2.5 py-1 text-[11px] font-bold rounded border border-border text-muted-foreground hover:bg-secondary"
-                >
-                  {preset}
-                </button>
-              ))}
+              {form.paymentTerms.trim() && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {form.paymentTerms}
+                </p>
+              )}
             </div>
 
             <div>

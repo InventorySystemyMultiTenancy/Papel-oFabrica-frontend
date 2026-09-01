@@ -30,8 +30,10 @@ const DEFAULT_INPUT: QuotationInput = {
   quality: "CMCBC",
   gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
   precoPorKg: PAPERBOARD_PRICE_PER_KG,
-  quantities: [100, 500, 1000],
+  quantities: [],
 };
+
+const TAX_PERCENTAGE = 28;
 
 export default function PricingPage() {
   const { toast } = useToast();
@@ -39,6 +41,7 @@ export default function PricingPage() {
   const [result, setResult] = useState<QuotationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [newQty, setNewQty] = useState("");
+  const [taxApplied, setTaxApplied] = useState(false);
 
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,9 +169,13 @@ export default function PricingPage() {
                 </label>
                 <input
                   type="number"
-                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-muted text-muted-foreground"
+                  min={1}
+                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
                   value={input.gramatura}
-                  readOnly
+                  onChange={(e) =>
+                    setInput({ ...input, gramatura: num(e.target.value) })
+                  }
+                  required
                 />
               </div>
               <div className="space-y-1">
@@ -176,10 +183,15 @@ export default function PricingPage() {
                   Preço por kg
                 </label>
                 <input
-                  type="text"
-                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-muted text-muted-foreground"
-                  value={formatCurrency(input.precoPorKg)}
-                  readOnly
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
+                  value={input.precoPorKg}
+                  onChange={(e) =>
+                    setInput({ ...input, precoPorKg: num(e.target.value) })
+                  }
+                  required
                 />
               </div>
             </div>
@@ -232,6 +244,20 @@ export default function PricingPage() {
             </div>
 
             <button
+              type="button"
+              onClick={() => setTaxApplied((current) => !current)}
+              className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                taxApplied
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {taxApplied
+                ? `Imposto de ${TAX_PERCENTAGE}% aplicado (clique para remover)`
+                : `Adicionar imposto (${TAX_PERCENTAGE}%)`}
+            </button>
+
+            <button
               type="submit"
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3 rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-60"
@@ -244,7 +270,14 @@ export default function PricingPage() {
 
         {result && (
           <div className="border border-border rounded-lg p-5 bg-card">
-            <h2 className="font-semibold mb-3">Resultado do Cálculo</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">Resultado do Cálculo</h2>
+              {taxApplied && (
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                  Imposto de {TAX_PERCENTAGE}% incluso
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
               <div>
                 <p className="text-xs text-muted-foreground">
@@ -298,25 +331,36 @@ export default function PricingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {result.breakdowns.map((breakdown) => (
-                    <tr key={breakdown.quantity} className="hover:bg-muted/30">
-                      <td className="px-3 py-2 font-medium">
-                        {breakdown.quantity.toLocaleString("pt-BR")} un
-                      </td>
-                      <td className="px-3 py-2">
-                        {breakdown.sheetsNeeded.toLocaleString("pt-BR")}
-                      </td>
-                      <td className="px-3 py-2">
-                        {formatNum(breakdown.totalWeightKg, 3)} kg
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-primary">
-                        {formatCurrency(breakdown.totalCost)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {formatCurrency(breakdown.unitSalePrice)}
-                      </td>
-                    </tr>
-                  ))}
+                  {result.breakdowns.map((breakdown) => {
+                    const taxMultiplier = taxApplied
+                      ? 1 + TAX_PERCENTAGE / 100
+                      : 1;
+
+                    return (
+                      <tr
+                        key={breakdown.quantity}
+                        className="hover:bg-muted/30"
+                      >
+                        <td className="px-3 py-2 font-medium">
+                          {breakdown.quantity.toLocaleString("pt-BR")} un
+                        </td>
+                        <td className="px-3 py-2">
+                          {breakdown.sheetsNeeded.toLocaleString("pt-BR")}
+                        </td>
+                        <td className="px-3 py-2">
+                          {formatNum(breakdown.totalWeightKg, 3)} kg
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-primary">
+                          {formatCurrency(breakdown.totalCost * taxMultiplier)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {formatCurrency(
+                            breakdown.unitSalePrice * taxMultiplier,
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -77,7 +77,14 @@ export async function calculateQuotation(
   const width = Number(input.larguraMm);
   const height = Number(input.alturaMm);
   const quality = input.quality === "CMCB" ? "CMCB" : "CMCBC";
-  const gramatura = PAPERBOARD_QUALITY_GRAMMAGE[quality];
+  const gramatura =
+    Number(input.gramatura) > 0
+      ? Number(input.gramatura)
+      : PAPERBOARD_QUALITY_GRAMMAGE[quality];
+  const precoPorKg =
+    Number(input.precoPorKg) > 0
+      ? Number(input.precoPorKg)
+      : PAPERBOARD_PRICE_PER_KG;
 
   if (length <= 0 || width <= 0 || height <= 0) {
     throw new Error("Informe dimensoes validas para calcular a cotacao.");
@@ -86,14 +93,14 @@ export async function calculateQuotation(
   const { blankWidthMm, blankHeightMm, areaM2 } =
     calculateBlankFromSpreadsheet(length, width, height, quality);
   const unitWeightKg = areaM2 * (gramatura / 1000);
-  const unitPrice = unitWeightKg * PAPERBOARD_PRICE_PER_KG;
+  const unitPrice = unitWeightKg * precoPorKg;
 
   return {
     input: {
       ...input,
       quality,
       gramatura,
-      precoPorKg: PAPERBOARD_PRICE_PER_KG,
+      precoPorKg,
     },
     blankWidthMm,
     blankHeightMm,
