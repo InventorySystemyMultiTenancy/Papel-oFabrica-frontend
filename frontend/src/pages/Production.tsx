@@ -167,20 +167,14 @@ const buildImageErrorMessage = (error: unknown) => {
   return "Nao foi possivel processar imagens desta producao.";
 };
 
-type StageInputMode = "existing" | "new";
-
 interface StatusEditorRow {
   key: string;
-  mode: StageInputMode;
   stageId: string;
-  stageName: string;
 }
 
 const createStatusEditorRow = (): StatusEditorRow => ({
   key: `stage-row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  mode: "existing",
   stageId: "",
-  stageName: "",
 });
 
 const createMockOrdersSnapshot = () =>
@@ -236,6 +230,8 @@ const ProductionPage = () => {
   const { canCreateProduction, canCompleteProduction } = useRoleAccess();
 
   const [data, setData] = useState<EmployeeProduction[]>([]);
+  const [searchName, setSearchName] = useState("");
+  const [searchDate, setSearchDate] = useState("");
   const [modal, setModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -269,9 +265,7 @@ const ProductionPage = () => {
   });
   const [selectedToAdvance, setSelectedToAdvance] =
     useState<EmployeeProduction | null>(null);
-  const [advanceMode, setAdvanceMode] = useState<StageInputMode>("existing");
   const [advanceStageId, setAdvanceStageId] = useState("");
-  const [advanceStageName, setAdvanceStageName] = useState("");
   const [advanceError, setAdvanceError] = useState("");
   const [selectedToEditStatuses, setSelectedToEditStatuses] =
     useState<EmployeeProduction | null>(null);
@@ -896,14 +890,9 @@ const ProductionPage = () => {
       return;
     }
 
-    const initialTeamId = order.statuses[0]?.teamId || teams[0]?.id || "";
-
     clearCompletionFeedback();
     setAdvanceError("");
-    setAdvanceMode("existing");
     setAdvanceStageId("");
-    setAdvanceStageName("");
-    setAdvanceTeamId(initialTeamId);
     setSelectedToAdvance(order);
   };
 
@@ -925,10 +914,7 @@ const ProductionPage = () => {
     const rows = order.statuses.length
       ? order.statuses.map((status) => ({
           key: `${status.id}-${Math.random().toString(36).slice(2, 6)}`,
-          mode: status.stageId ? "existing" : "new",
           stageId: status.stageId || "",
-          stageName: status.stageName,
-          teamId: status.teamId,
         }))
       : [createStatusEditorRow()];
 
@@ -963,23 +949,7 @@ const ProductionPage = () => {
     patch: Partial<StatusEditorRow>,
   ) => {
     setStatusEditorRows((current) =>
-      current.map((row) => {
-        if (row.key !== rowKey) {
-          return row;
-        }
-
-        const next = { ...row, ...patch };
-
-        if (patch.mode === "existing") {
-          next.stageName = "";
-        }
-
-        if (patch.mode === "new") {
-          next.stageId = "";
-        }
-
-        return next;
-      }),
+      current.map((row) => (row.key === rowKey ? { ...row, ...patch } : row)),
     );
   };
 
@@ -1217,21 +1187,13 @@ const ProductionPage = () => {
       return;
     }
 
-    if (advanceMode === "existing" && !advanceStageId) {
-      setAdvanceError("Selecione uma etapa existente.");
-      return;
-    }
-
-    if (advanceMode === "new" && !advanceStageName.trim()) {
-      setAdvanceError("Informe o nome da nova etapa.");
+    if (!advanceStageId) {
+      setAdvanceError("Selecione uma etapa.");
       return;
     }
 
     const orderId = selectedToAdvance.id;
-    const payload: AdvanceProductionStatusInput =
-      advanceMode === "existing"
-        ? { stageId: advanceStageId }
-        : { stageName: advanceStageName.trim() };
+    const payload: AdvanceProductionStatusInput = { stageId: advanceStageId };
 
     if (completionInFlightRef.current) {
       return;
@@ -1245,10 +1207,8 @@ const ProductionPage = () => {
 
     if (isMockMode) {
       const selectedStageName =
-        advanceMode === "existing"
-          ? statusOptions.find((option) => option.id === advanceStageId)
-              ?.name || "Etapa"
-          : advanceStageName.trim();
+        statusOptions.find((option) => option.id === advanceStageId)?.name ||
+        "Etapa";
 
       setData((current) =>
         current.map((order) =>
@@ -1260,8 +1220,7 @@ const ProductionPage = () => {
                   ...order.statuses,
                   {
                     id: `mock-status-${Date.now()}`,
-                    stageId:
-                      advanceMode === "existing" ? advanceStageId : undefined,
+                    stageId: advanceStageId,
                     stageName: selectedStageName,
                     teamId: "",
                     teamName: "",
@@ -1368,27 +1327,12 @@ const ProductionPage = () => {
     const parsedRows: AdvanceProductionStatusInput[] = [];
 
     for (const row of statusEditorRows) {
-      if (row.mode === "existing") {
-        if (!row.stageId) {
-          setStatusEditorError(
-            "Selecione uma etapa existente para todas as linhas em modo existente.",
-          );
-          return;
-        }
-
-        parsedRows.push({ stageId: row.stageId });
-      } else {
-        const stageName = row.stageName.trim();
-
-        if (!stageName) {
-          setStatusEditorError(
-            "Informe o nome da etapa para todas as linhas em modo nova etapa.",
-          );
-          return;
-        }
-
-        parsedRows.push({ stageName });
+      if (!row.stageId) {
+        setStatusEditorError("Selecione uma etapa para todas as linhas.");
+        return;
       }
+
+      parsedRows.push({ stageId: row.stageId });
     }
 
     setUpdatingId(selectedToEditStatuses.id);
@@ -1499,16 +1443,30 @@ const ProductionPage = () => {
     selectedForImages && (isLoadingImages || isUploadingImages),
   );
 
+  const filteredData = useMemo(() => {
+    const normalizedSearch = searchName.trim().toLowerCase();
+
+    return data.filter((order) => {
+      const matchesName =
+        !normalizedSearch ||
+        order.clientName.toLowerCase().includes(normalizedSearch) ||
+        order.description.toLowerCase().includes(normalizedSearch);
+      const matchesDate = !searchDate || order.deliveryDate === searchDate;
+
+      return matchesName && matchesDate;
+    });
+  }, [data, searchName, searchDate]);
+
   const productionStatusSummary = useMemo(() => {
     const counts = new Map<string, number>();
 
-    data.forEach((order) => {
+    filteredData.forEach((order) => {
       const key = order.productionStatus || "pending";
       counts.set(key, (counts.get(key) || 0) + 1);
     });
 
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [data]);
+  }, [filteredData]);
 
   const columns = [
     {
@@ -1714,9 +1672,38 @@ const ProductionPage = () => {
             </div>
           ))}
         </div>
+
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="text"
+            placeholder="Buscar por cliente ou descrição..."
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
+            className="flex-1 min-w-[220px] border border-border rounded-md px-3 py-2 text-sm bg-background"
+          />
+          <input
+            type="date"
+            value={searchDate}
+            onChange={(e) => setSearchDate(e.target.value)}
+            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+          />
+          {(searchName || searchDate) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchName("");
+                setSearchDate("");
+              }}
+              className="px-3 py-2 text-xs font-bold rounded border border-border text-muted-foreground hover:bg-secondary transition-colors"
+            >
+              LIMPAR
+            </button>
+          )}
+        </div>
+
         <DataTable
           columns={columns}
-          data={data}
+          data={filteredData}
           emptyMessage={
             isLoading
               ? "Carregando produções do banco..."
@@ -2276,8 +2263,7 @@ const ProductionPage = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">
-              Escolha uma etapa existente ou crie uma nova etapa e selecione a
-              equipe responsavel.
+              Escolha a proxima etapa da producao.
             </p>
 
             <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-sm space-y-1">
@@ -2309,56 +2295,19 @@ const ProductionPage = () => {
               </div>
             )}
 
-            <div className="mb-1 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setAdvanceMode("existing")}
-                className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                  advanceMode === "existing"
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                Usar etapa existente
-              </button>
-              <button
-                type="button"
-                onClick={() => setAdvanceMode("new")}
-                className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                  advanceMode === "new"
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                Criar nova etapa
-              </button>
-            </div>
-
-            {advanceMode === "existing" ? (
-              <FormField
-                label="Etapa existente"
-                as="select"
-                value={advanceStageId}
-                onChange={(e) => {
-                  setAdvanceStageId(e.target.value);
-                  setAdvanceError("");
-                }}
-                options={statusOptions.map((option) => ({
-                  value: option.id,
-                  label: `${option.name} (${option.usageCount})`,
-                }))}
-              />
-            ) : (
-              <FormField
-                label="Nova etapa"
-                value={advanceStageName}
-                onChange={(e) => {
-                  setAdvanceStageName(e.target.value);
-                  setAdvanceError("");
-                }}
-                placeholder="Ex.: Eletrica"
-              />
-            )}
+            <FormField
+              label="Etapa"
+              as="select"
+              value={advanceStageId}
+              onChange={(e) => {
+                setAdvanceStageId(e.target.value);
+                setAdvanceError("");
+              }}
+              options={statusOptions.map((option) => ({
+                value: option.id,
+                label: option.name,
+              }))}
+            />
 
             {(advanceError || completionError) && (
               <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive space-y-2">
@@ -2452,62 +2401,20 @@ const ProductionPage = () => {
                   key={row.key}
                   className="rounded border border-border p-3 space-y-3 bg-secondary/10"
                 >
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateStatusEditorRow(row.key, { mode: "existing" })
-                      }
-                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                        row.mode === "existing"
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      Etapa existente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateStatusEditorRow(row.key, { mode: "new" })
-                      }
-                      className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
-                        row.mode === "new"
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      Nova etapa
-                    </button>
-                  </div>
-
-                  {row.mode === "existing" ? (
-                    <FormField
-                      label="Etapa"
-                      as="select"
-                      value={row.stageId}
-                      onChange={(e) =>
-                        updateStatusEditorRow(row.key, {
-                          stageId: e.target.value,
-                        })
-                      }
-                      options={statusOptions.map((option) => ({
-                        value: option.id,
-                        label: `${option.name} (${option.usageCount})`,
-                      }))}
-                    />
-                  ) : (
-                    <FormField
-                      label="Nova etapa"
-                      value={row.stageName}
-                      onChange={(e) =>
-                        updateStatusEditorRow(row.key, {
-                          stageName: e.target.value,
-                        })
-                      }
-                      placeholder="Ex.: Eletrica"
-                    />
-                  )}
+                  <FormField
+                    label="Etapa"
+                    as="select"
+                    value={row.stageId}
+                    onChange={(e) =>
+                      updateStatusEditorRow(row.key, {
+                        stageId: e.target.value,
+                      })
+                    }
+                    options={statusOptions.map((option) => ({
+                      value: option.id,
+                      label: option.name,
+                    }))}
+                  />
 
                   <div className="flex justify-end">
                     <button
