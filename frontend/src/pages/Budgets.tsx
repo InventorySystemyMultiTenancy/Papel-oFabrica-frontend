@@ -4762,19 +4762,28 @@ const BudgetsPage = () => {
               </p>
             )}
 
-            <FormField
-              label="Prazo estimado de entrega (dias úteis previstos)"
-              type="number"
-              min={1}
-              step="1"
-              value={form.estimatedDeliveryBusinessDays}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  estimatedDeliveryBusinessDays: e.target.value,
-                })
-              }
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                label="Prazo estimado de entrega (dias úteis previstos)"
+                type="number"
+                min={1}
+                step="1"
+                value={form.estimatedDeliveryBusinessDays}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    estimatedDeliveryBusinessDays: e.target.value,
+                  })
+                }
+              />
+              <FormField
+                label="Descrição (opcional)"
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
+            </div>
 
             <div>
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
@@ -5190,32 +5199,6 @@ const BudgetsPage = () => {
                 disabled
               />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                label="Custo aplicavel (R$)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.costsApplicableValue ?? 0}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    costsApplicableValue: Math.max(
-                      0,
-                      Number(e.target.value) || 0,
-                    ),
-                  })
-                }
-                disabled={!isAdmin}
-              />
-            </div>
-
-            {!isAdmin && (
-              <p className="text-xs text-muted-foreground -mt-2">
-                Campo de custo aplicável é editável apenas por admin.
-              </p>
-            )}
 
             {formError && (
               <p className="text-sm text-destructive">{formError}</p>

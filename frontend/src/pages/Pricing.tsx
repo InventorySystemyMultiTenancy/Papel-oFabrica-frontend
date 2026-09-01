@@ -6,7 +6,7 @@ import {
   type QuotationInput,
   type QuotationResult,
 } from "@/services/pricing";
-import { Calculator, Plus, Trash2, Zap } from "lucide-react";
+import { Calculator, FileDown, Plus, Trash2, Zap } from "lucide-react";
 
 const PAPERBOARD_PRICE_PER_KG = 14;
 const PAPERBOARD_QUALITY_GRAMMAGE: Record<QuotationInput["quality"], number> = {
@@ -42,6 +42,7 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [newQty, setNewQty] = useState("");
   const [taxApplied, setTaxApplied] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +67,172 @@ export default function PricingPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateQuotationPdf = async () => {
+    if (!result) {
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "mm", format: "a4" });
+      const PW = pdf.internal.pageSize.getWidth();
+      const MX = 15;
+      const taxMultiplier = taxApplied ? 1 + TAX_PERCENTAGE / 100 : 1;
+      let y = 20;
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text("Cotação Rápida", MX, y);
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(
+        `Gerado em ${new Date().toLocaleDateString("pt-BR")}`,
+        PW - MX,
+        y,
+        { align: "right" },
+      );
+
+      y += 5;
+      pdf.setDrawColor(203, 213, 225);
+      pdf.setLineWidth(0.3);
+      pdf.line(MX, y, PW - MX, y);
+
+      y += 8;
+      pdf.setFontSize(10);
+      pdf.setTextColor(15, 23, 42);
+      const spec = (label: string, value: string, x: number) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.text(label, x, y);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(value, x + pdf.getTextWidth(label) + 2, y);
+      };
+      const colX = [MX, MX + 95];
+      spec(
+        "Dimensões (C x L x A):",
+        `${formatNum(result.input.comprimentoMm, 0)} x ${formatNum(result.input.larguraMm, 0)} x ${formatNum(result.input.alturaMm, 0)} mm`,
+        colX[0],
+      );
+      spec("Qualidade:", result.input.quality, colX[1]);
+      y += 6;
+      spec("Gramatura:", `${result.input.gramatura} g/m²`, colX[0]);
+      spec("Preço por kg:", formatCurrency(result.input.precoPorKg), colX[1]);
+      y += 6;
+      spec(
+        "Formato impressora:",
+        `${formatNum(result.blankWidthMm)} mm`,
+        colX[0],
+      );
+      spec(
+        "Formato riscador:",
+        `${formatNum(result.blankHeightMm)} mm`,
+        colX[1],
+      );
+      y += 6;
+      spec("Peso por caixa:", `${formatNum(result.sheetWeightKg, 4)} kg`, colX[0]);
+
+      y += 10;
+      const tableHeaders = [
+        "Quantidade",
+        "Folhas",
+        "Peso Total",
+        "Valor Total",
+        "R$/un",
+      ];
+      const colWidths = [30, 25, 30, 40, 30];
+      const tableX = MX;
+      const rowHeight = 7;
+
+      pdf.setFillColor(226, 232, 240);
+      pdf.rect(
+        tableX,
+        y,
+        colWidths.reduce((a, b) => a + b, 0),
+        rowHeight,
+        "F",
+      );
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+      pdf.setTextColor(15, 23, 42);
+      let headerX = tableX;
+      tableHeaders.forEach((header, index) => {
+        pdf.text(header, headerX + 2, y + 4.8);
+        headerX += colWidths[index];
+      });
+
+      y += rowHeight;
+      pdf.setFont("helvetica", "normal");
+      result.breakdowns.forEach((breakdown, index) => {
+        if (index % 2 === 1) {
+          pdf.setFillColor(248, 250, 252);
+          pdf.rect(
+            tableX,
+            y,
+            colWidths.reduce((a, b) => a + b, 0),
+            rowHeight,
+            "F",
+          );
+        }
+
+        let cellX = tableX;
+        const cells = [
+          `${breakdown.quantity.toLocaleString("pt-BR")} un`,
+          breakdown.sheetsNeeded.toLocaleString("pt-BR"),
+          `${formatNum(breakdown.totalWeightKg, 3)} kg`,
+          formatCurrency(breakdown.totalCost * taxMultiplier),
+          formatCurrency(breakdown.unitSalePrice * taxMultiplier),
+        ];
+        cells.forEach((cell, cellIndex) => {
+          pdf.text(cell, cellX + 2, y + 4.8);
+          cellX += colWidths[cellIndex];
+        });
+        y += rowHeight;
+      });
+
+      pdf.setDrawColor(203, 213, 225);
+      pdf.rect(
+        tableX,
+        y - rowHeight * (result.breakdowns.length + 1),
+        colWidths.reduce((a, b) => a + b, 0),
+        rowHeight * (result.breakdowns.length + 1),
+        "S",
+      );
+
+      if (taxApplied) {
+        y += 6;
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `* Valores já incluem imposto de ${TAX_PERCENTAGE}%.`,
+          MX,
+          y,
+        );
+      }
+
+      y += 10;
+      pdf.setFontSize(8);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(
+        "Cotação simplificada, sujeita a confirmação. Não substitui orçamento formal.",
+        MX,
+        y,
+      );
+
+      pdf.save(`cotacao-rapida-${Date.now()}.pdf`);
+    } catch (e) {
+      toast({
+        title: "Erro ao gerar PDF",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -266,13 +433,24 @@ export default function PricingPage() {
 
         {result && (
           <div className="border border-border rounded-lg p-5 bg-card">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Resultado do Cálculo</h2>
-              {taxApplied && (
-                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
-                  Imposto de {TAX_PERCENTAGE}% incluso
-                </span>
-              )}
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Resultado do Cálculo</h2>
+                {taxApplied && (
+                  <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                    Imposto de {TAX_PERCENTAGE}% incluso
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void generateQuotationPdf()}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-1.5 text-xs font-bold border border-border px-3 py-1.5 rounded-lg hover:bg-accent disabled:opacity-60"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                {isGeneratingPdf ? "Gerando PDF..." : "Gerar PDF"}
+              </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
               <div>
