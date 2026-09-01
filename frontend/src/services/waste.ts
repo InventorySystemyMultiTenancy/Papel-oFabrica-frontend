@@ -19,6 +19,10 @@ export interface WasteSummary {
   totalRevenue: number;
   pendingSaleWeightKg: number;
 }
+export interface WastePriceSetting {
+  pricePerKg: number;
+  updatedAt: string | null;
+}
 
 const toRecord = (v: unknown) =>
   !v || typeof v !== "object" || Array.isArray(v)
@@ -104,4 +108,28 @@ export async function updateWasteRecord(
 
 export async function deleteWasteRecord(id: string): Promise<void> {
   await request(`/waste/${id}`, { method: "DELETE" });
+}
+
+const toPriceSetting = (raw: unknown): WastePriceSetting => {
+  const item = toRecord(raw);
+  const data = toRecord(item?.data ?? raw);
+  return {
+    pricePerKg: toNum(data?.pricePerKg),
+    updatedAt: typeof data?.updatedAt === "string" ? data.updatedAt : null,
+  };
+};
+
+export async function getWastePriceSetting(): Promise<WastePriceSetting> {
+  const raw = await request("/waste/price-setting");
+  return toPriceSetting(raw);
+}
+
+export async function updateWastePriceSetting(
+  pricePerKg: number,
+): Promise<WastePriceSetting> {
+  const raw = await request("/waste/price-setting", {
+    method: "PUT",
+    body: JSON.stringify({ pricePerKg }),
+  });
+  return toPriceSetting(raw);
 }

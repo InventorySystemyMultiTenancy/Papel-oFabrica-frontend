@@ -8,6 +8,8 @@ import {
   createWasteRecord,
   updateWasteRecord,
   deleteWasteRecord,
+  getWastePriceSetting,
+  updateWastePriceSetting,
   type WasteRecord,
   type WasteSummary,
 } from "@/services/waste";
@@ -18,6 +20,8 @@ import {
   RefreshCw,
   Recycle,
   DollarSign,
+  Check,
+  X,
 } from "lucide-react";
 
 const formatCurrency = (v: number) =>
@@ -33,6 +37,10 @@ export default function WastePage() {
   const { toast } = useToast();
   const [records, setRecords] = useState<WasteRecord[]>([]);
   const [summary, setSummary] = useState<WasteSummary | null>(null);
+  const [pricePerKg, setPricePerKg] = useState(0);
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [priceDraft, setPriceDraft] = useState("");
+  const [savingPrice, setSavingPrice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,9 +61,14 @@ export default function WastePage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [r, s] = await Promise.all([listWasteRecords(), getWasteSummary()]);
+      const [r, s, p] = await Promise.all([
+        listWasteRecords(),
+        getWasteSummary(),
+        getWastePriceSetting(),
+      ]);
       setRecords(r);
       setSummary(s);
+      setPricePerKg(p.pricePerKg);
     } catch (e) {
       toast({
         title: "Erro",
@@ -70,6 +83,45 @@ export default function WastePage() {
   useEffect(() => {
     load();
   }, []);
+
+  const handleEditPrice = () => {
+    setPriceDraft(String(pricePerKg));
+    setIsEditingPrice(true);
+  };
+
+  const handleCancelEditPrice = () => {
+    setIsEditingPrice(false);
+    setPriceDraft("");
+  };
+
+  const handleSavePrice = async () => {
+    const value = Number(priceDraft);
+
+    if (!Number.isFinite(value) || value < 0) {
+      toast({
+        title: "Informe um preço válido",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingPrice(true);
+    try {
+      const updated = await updateWastePriceSetting(value);
+      setPricePerKg(updated.pricePerKg);
+      setIsEditingPrice(false);
+      toast({ title: "Preço do resíduo atualizado" });
+    } catch (e) {
+      toast({
+        title: "Erro",
+        description:
+          e instanceof ApiError ? e.message : "Erro ao salvar preço",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPrice(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,6 +261,60 @@ export default function WastePage() {
             </div>
           </div>
         )}
+
+        <div className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase">
+              Preço do Resíduo (R$/kg)
+            </p>
+            {isEditingPrice ? (
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  autoFocus
+                  value={priceDraft}
+                  onChange={(e) => setPriceDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSavePrice();
+                    if (e.key === "Escape") handleCancelEditPrice();
+                  }}
+                  className="w-32 border border-border rounded-md px-3 py-1.5 text-sm bg-background"
+                />
+                <button
+                  onClick={() => void handleSavePrice()}
+                  disabled={savingPrice}
+                  title="Salvar"
+                  className="p-1.5 rounded hover:bg-green-500/10 text-green-600 disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleCancelEditPrice}
+                  disabled={savingPrice}
+                  title="Cancelar"
+                  className="p-1.5 rounded hover:bg-destructive/10 text-destructive disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-xl font-bold text-primary">
+                {formatCurrency(pricePerKg)}
+              </p>
+            )}
+          </div>
+          {!isEditingPrice && (
+            <button
+              onClick={handleEditPrice}
+              title="Editar preço do resíduo"
+              className="flex items-center gap-1 text-sm border border-border px-3 py-1.5 rounded-lg hover:bg-accent"
+            >
+              <Edit className="h-4 w-4" /> Editar
+            </button>
+          )}
+        </div>
 
         {showForm && (
           <div className="border border-border rounded-lg p-5 bg-card space-y-4">

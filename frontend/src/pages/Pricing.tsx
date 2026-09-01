@@ -246,14 +246,10 @@ export default function PricingPage() {
             <button
               type="button"
               onClick={() => setTaxApplied((current) => !current)}
-              className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                taxApplied
-                  ? "border-primary/40 bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:bg-accent"
-              }`}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border border-orange-500 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
             >
               {taxApplied
-                ? `Imposto de ${TAX_PERCENTAGE}% aplicado (clique para remover)`
+                ? "Aplicado imposto (clique para remover)"
                 : `Adicionar imposto (${TAX_PERCENTAGE}%)`}
             </button>
 
