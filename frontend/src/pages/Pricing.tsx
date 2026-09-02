@@ -17,6 +17,51 @@ import {
   Zap,
 } from "lucide-react";
 
+const COMPANY_NAME = "4D EMBALAGENS LTDA";
+const COMPANY_ADDRESS = "Rua Benedito Passos, 160 - Vila Matilde - SP";
+const COMPANY_CNPJ = "CNPJ: 62.728.414/0001-99";
+const COMPANY_TEL = "Tel: (11) 2651-4292 | Cel: (11) 95266-1751";
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Falha ao converter logo para data URL."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Falha ao ler logo."));
+    reader.readAsDataURL(blob);
+  });
+
+let logoDataUrlCache: string | null | undefined;
+
+const loadLogoDataUrl = async () => {
+  if (logoDataUrlCache !== undefined) {
+    return logoDataUrlCache;
+  }
+
+  try {
+    const response = await fetch("/4d.jpg");
+
+    if (!response.ok) {
+      logoDataUrlCache = null;
+      return null;
+    }
+
+    const blob = await response.blob();
+    logoDataUrlCache = await blobToDataUrl(blob);
+    return logoDataUrlCache;
+  } catch {
+    logoDataUrlCache = null;
+    return null;
+  }
+};
+
 const PAPERBOARD_PRICE_PER_KG = 14;
 const PAPERBOARD_QUALITY_GRAMMAGE: Record<QuotationInput["quality"], number> = {
   CMCB: 511,
@@ -110,30 +155,48 @@ export default function PricingPage() {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const PW = pdf.internal.pageSize.getWidth();
-      const MX = 15;
+      const MX = 14;
       const taxMultiplier = taxApplied ? 1 + taxPercentage / 100 : 1;
-      let y = 20;
+      let y = 12;
 
+      // ── Cabeçalho: logo + dados da empresa (igual ao PDF de orçamento) ──
+      const logoDataUrl = await loadLogoDataUrl();
+      const LOGO_W = 28;
+      const LOGO_H = 28;
+      if (logoDataUrl) {
+        pdf.addImage(logoDataUrl, "PNG", MX, y, LOGO_W, LOGO_H);
+      }
+
+      const compX = MX + LOGO_W + 4;
+      const compW = PW - compX - MX;
+      pdf.setTextColor(26, 26, 26);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.text(COMPANY_NAME, compX + compW, y + 5, { align: "right" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(85, 85, 85);
+      pdf.text(COMPANY_ADDRESS, compX + compW, y + 10, { align: "right" });
+      pdf.text(COMPANY_CNPJ, compX + compW, y + 15, { align: "right" });
+      pdf.text(COMPANY_TEL, compX + compW, y + 20, { align: "right" });
+
+      y += 34;
+
+      pdf.setTextColor(0, 0, 0);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(16);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text("Cotação Rápida", MX, y);
-      pdf.setFontSize(9);
+      pdf.text("Cotação Rápida", PW / 2, y, { align: "center" });
       pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
       pdf.setTextColor(100, 116, 139);
       pdf.text(
         `Gerado em ${new Date().toLocaleDateString("pt-BR")}`,
-        PW - MX,
-        y,
-        { align: "right" },
+        PW / 2,
+        y + 5,
+        { align: "center" },
       );
 
-      y += 5;
-      pdf.setDrawColor(203, 213, 225);
-      pdf.setLineWidth(0.3);
-      pdf.line(MX, y, PW - MX, y);
-
-      y += 8;
+      y += 12;
       pdf.setFontSize(10);
       pdf.setTextColor(15, 23, 42);
       const spec = (label: string, value: string, x: number) => {
