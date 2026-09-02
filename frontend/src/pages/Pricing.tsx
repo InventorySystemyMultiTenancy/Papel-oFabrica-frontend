@@ -56,10 +56,22 @@ export default function PricingPage() {
   const [taxPercentageDraft, setTaxPercentageDraft] = useState("");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  const mergeQuantity = (quantities: number[], rawValue: string) => {
+    const quantity = parseInt(rawValue, 10);
+
+    if (!quantity || quantity <= 0 || quantities.includes(quantity)) {
+      return quantities;
+    }
+
+    return [...quantities, quantity].sort((a, b) => a - b);
+  };
+
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (input.quantities.length === 0) {
+    const quantities = mergeQuantity(input.quantities, newQty);
+
+    if (quantities.length === 0) {
       toast({
         title: "Adicione pelo menos uma quantidade",
         variant: "destructive",
@@ -67,9 +79,14 @@ export default function PricingPage() {
       return;
     }
 
+    if (quantities !== input.quantities) {
+      setInput((current) => ({ ...current, quantities }));
+      setNewQty("");
+    }
+
     setLoading(true);
     try {
-      const res = await calculateQuotation(input);
+      const res = await calculateQuotation({ ...input, quantities });
       setResult(res);
     } catch (e) {
       toast({
@@ -249,15 +266,12 @@ export default function PricingPage() {
   };
 
   const addQty = () => {
-    const quantity = parseInt(newQty, 10);
-    if (!quantity || quantity <= 0) return;
+    const quantities = mergeQuantity(input.quantities, newQty);
 
-    if (!input.quantities.includes(quantity)) {
-      setInput({
-        ...input,
-        quantities: [...input.quantities, quantity].sort((a, b) => a - b),
-      });
+    if (quantities !== input.quantities) {
+      setInput((current) => ({ ...current, quantities }));
     }
+
     setNewQty("");
   };
 
