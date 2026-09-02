@@ -22,6 +22,16 @@ export interface CashflowSummary {
   projectedProfit: number;
   projectedProfitCashflow: number;
   receivablesByMonth: Array<{ month: string; amount: number }>;
+  periodStart: string;
+  periodEnd: string;
+  periodRevenue: number;
+  periodCost: number;
+  netProfit: number;
+}
+
+export interface CashflowPeriod {
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface GenerateInstallmentsInput {
@@ -93,11 +103,25 @@ const normalizeCashflow = (raw: unknown): CashflowSummary | null => {
     projectedProfit: toNum(item.projectedProfit),
     projectedProfitCashflow: toNum(item.projectedProfitCashflow),
     receivablesByMonth: byMonth,
+    periodStart: toStr(item.periodStart),
+    periodEnd: toStr(item.periodEnd),
+    periodRevenue: toNum(item.periodRevenue),
+    periodCost: toNum(item.periodCost),
+    netProfit: toNum(item.netProfit),
   };
 };
 
-export const getCashflow = async (): Promise<CashflowSummary> => {
-  const payload = await request<unknown>("/financial/cashflow");
+export const getCashflow = async (
+  period?: CashflowPeriod,
+): Promise<CashflowSummary> => {
+  const params = new URLSearchParams();
+  if (period?.startDate) params.set("startDate", period.startDate);
+  if (period?.endDate) params.set("endDate", period.endDate);
+  const query = params.toString();
+
+  const payload = await request<unknown>(
+    `/financial/cashflow${query ? `?${query}` : ""}`,
+  );
   const normalized = normalizeCashflow(payload);
   if (!normalized)
     throw new Error("Resposta inválida ao buscar fluxo de caixa.");

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import { ApiError } from "@/services/api";
 import {
   type DashboardSummary,
@@ -16,6 +17,7 @@ import {
   BarChart2,
   Package,
   Printer,
+  Wallet,
 } from "lucide-react";
 
 const fmt = (value: number) =>
@@ -202,13 +204,18 @@ const DashboardPage = () => {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [period, setPeriod] = useState<{
+    startDate?: string;
+    endDate?: string;
+  }>({});
 
-  const loadData = async () => {
+  const loadData = async (overridePeriod = period) => {
     setIsLoading(true);
     setError("");
     try {
-      const data = await getDashboardSummary();
+      const data = await getDashboardSummary(overridePeriod);
       setSummary(data);
+      setPeriod({ startDate: data.periodStart, endDate: data.periodEnd });
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -222,7 +229,12 @@ const DashboardPage = () => {
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleApplyPeriod = (startDate: string, endDate: string) => {
+    void loadData({ startDate, endDate });
+  };
 
   const growthPct =
     summary && summary.revenueLastMonth > 0
@@ -235,13 +247,22 @@ const DashboardPage = () => {
     <DashboardLayout
       title="Dashboard Financeiro"
       action={
-        <button
-          onClick={() => void loadData()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border border-border hover:bg-secondary transition-colors"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {summary && (
+            <PeriodPicker
+              startDate={summary.periodStart}
+              endDate={summary.periodEnd}
+              onApply={handleApplyPeriod}
+            />
+          )}
+          <button
+            onClick={() => void loadData()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border border-border hover:bg-secondary transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Atualizar
+          </button>
+        </div>
       }
     >
       <div className="animate-fade-in space-y-6">
@@ -310,6 +331,44 @@ const DashboardPage = () => {
                   subtitle={`${fmtNum(summary.budgetsApprovedCount)} aprovados ativos`}
                   icon={FileText}
                   color="orange"
+                />
+              </div>
+            </div>
+
+            {/* Lucro líquido do período selecionado */}
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Lucro do Período (
+                {new Date(`${summary.periodStart}T00:00:00`).toLocaleDateString(
+                  "pt-BR",
+                )}{" "}
+                a{" "}
+                {new Date(`${summary.periodEnd}T00:00:00`).toLocaleDateString(
+                  "pt-BR",
+                )}
+                )
+              </h2>
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <KpiCard
+                  title="Receita do Período"
+                  value={fmt(summary.periodRevenue)}
+                  subtitle="Preço dos produtos vendidos"
+                  icon={DollarSign}
+                  color="blue"
+                />
+                <KpiCard
+                  title="Custo do Período"
+                  value={fmt(summary.periodCost)}
+                  subtitle="Custo dos produtos vendidos"
+                  icon={TrendingDown}
+                  color="orange"
+                />
+                <KpiCard
+                  title="Lucro Líquido"
+                  value={fmt(summary.netProfit)}
+                  subtitle="Receita − custo do período"
+                  icon={Wallet}
+                  color={summary.netProfit >= 0 ? "green" : "red"}
                 />
               </div>
             </div>

@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import { ApiError } from "@/services/api";
 import { type CashflowSummary, getCashflow } from "@/services/financial";
-import { TrendingUp, TrendingDown, DollarSign, RefreshCw } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  RefreshCw,
+  Wallet,
+} from "lucide-react";
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -88,13 +95,18 @@ const FinancialPage = () => {
   const [summary, setSummary] = useState<CashflowSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [period, setPeriod] = useState<{
+    startDate?: string;
+    endDate?: string;
+  }>({});
 
-  const loadData = async () => {
+  const loadData = async (overridePeriod = period) => {
     setIsLoading(true);
     setError("");
     try {
-      const data = await getCashflow();
+      const data = await getCashflow(overridePeriod);
       setSummary(data);
+      setPeriod({ startDate: data.periodStart, endDate: data.periodEnd });
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -108,7 +120,12 @@ const FinancialPage = () => {
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleApplyPeriod = (startDate: string, endDate: string) => {
+    void loadData({ startDate, endDate });
+  };
 
   return (
     <DashboardLayout
@@ -116,7 +133,14 @@ const FinancialPage = () => {
       subtitle="Fluxo de caixa e contas a receber"
     >
       <div className="animate-fade-in space-y-6">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-2">
+          {summary && (
+            <PeriodPicker
+              startDate={summary.periodStart}
+              endDate={summary.periodEnd}
+              onApply={handleApplyPeriod}
+            />
+          )}
           <button
             onClick={() => void loadData()}
             disabled={isLoading}
@@ -177,6 +201,40 @@ const FinancialPage = () => {
                 icon={DollarSign}
                 positive={summary.projectedProfitCashflow >= 0}
               />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold mb-3">
+                Lucro do Período (
+                {new Date(`${summary.periodStart}T00:00:00`).toLocaleDateString(
+                  "pt-BR",
+                )}{" "}
+                a{" "}
+                {new Date(`${summary.periodEnd}T00:00:00`).toLocaleDateString(
+                  "pt-BR",
+                )}
+                )
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Receita do Período"
+                  value={summary.periodRevenue}
+                  icon={TrendingUp}
+                  positive={true}
+                />
+                <StatCard
+                  title="Custo do Período"
+                  value={summary.periodCost}
+                  icon={TrendingDown}
+                  positive={false}
+                />
+                <StatCard
+                  title="Lucro Líquido"
+                  value={summary.netProfit}
+                  icon={Wallet}
+                  positive={summary.netProfit >= 0}
+                />
+              </div>
             </div>
 
             <BarChart data={summary.receivablesByMonth} />
