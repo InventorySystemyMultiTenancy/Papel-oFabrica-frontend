@@ -92,6 +92,9 @@ const DEFAULT_TAX_PERCENTAGE = 28;
 export default function PricingPage() {
   const { toast } = useToast();
   const [input, setInput] = useState<QuotationInput>({ ...DEFAULT_INPUT });
+  const [precoPorKgText, setPrecoPorKgText] = useState(
+    String(DEFAULT_INPUT.precoPorKg),
+  );
   const [result, setResult] = useState<QuotationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [newQty, setNewQty] = useState("");
@@ -352,6 +355,7 @@ export default function PricingPage() {
       gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
       precoPorKg: PAPERBOARD_PRICE_PER_KG,
     });
+    setPrecoPorKgText(String(PAPERBOARD_PRICE_PER_KG));
   };
 
   const num = (v: string) => (v === "" ? 0 : Number(v));
@@ -513,10 +517,11 @@ export default function PricingPage() {
                   min={0.01}
                   step="0.01"
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={input.precoPorKg}
-                  onChange={(e) =>
-                    setInput({ ...input, precoPorKg: num(e.target.value) })
-                  }
+                  value={precoPorKgText}
+                  onChange={(e) => {
+                    setPrecoPorKgText(e.target.value);
+                    setInput({ ...input, precoPorKg: num(e.target.value) });
+                  }}
                   required
                 />
               </div>
