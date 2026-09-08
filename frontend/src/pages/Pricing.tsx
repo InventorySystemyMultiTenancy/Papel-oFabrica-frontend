@@ -206,7 +206,7 @@ export default function PricingPage() {
         pdf.setFont("helvetica", "bold");
         pdf.text(label, x, y);
         pdf.setFont("helvetica", "normal");
-        pdf.text(value, x + pdf.getTextWidth(label) + 2, y);
+        pdf.text(value, x + pdf.getTextWidth(label) + 4, y);
       };
       const colX = [MX, MX + 95];
       spec(
