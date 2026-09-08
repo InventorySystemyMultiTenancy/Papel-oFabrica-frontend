@@ -36,7 +36,7 @@ import {
   deletePaperboardConfig,
 } from "@/services/paperboard";
 import { useAuth } from "@/auth/AuthProvider";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 
 type MaterialInputMode = "existing" | "new";
 
@@ -244,6 +244,9 @@ const BUDGET_PDF_VALIDITY_FOOTER = "Validade do orçamento: 15 dias";
 
 const DEFAULT_BUDGET_VALIDITY_BUSINESS_DAYS = 15;
 const PAPERBOARD_PRICE_PER_KG = 14;
+// Mesmo imposto padrão da Cotação Rápida (Pricing.tsx), para manter os dois
+// cálculos idênticos.
+const DEFAULT_TAX_PERCENTAGE = 28;
 
 const PAYMENT_TERMS_PRESETS = [
   "Ato",
@@ -494,7 +497,11 @@ const calculatePaperboardPreview = (
   );
   const gramaturaKgM2 = normalizePaperboardGrammage(gramatura);
   const unitWeightKg = areaM2 * gramaturaKgM2;
-  const unitMaterialCost = unitWeightKg * PAPERBOARD_PRICE_PER_KG;
+  const pricePerKg =
+    input.pricePerKg && input.pricePerKg > 0
+      ? input.pricePerKg
+      : PAPERBOARD_PRICE_PER_KG;
+  const unitMaterialCost = unitWeightKg * pricePerKg;
   const totalSheets = Math.max(quantity, 0);
   const totalBundles =
     sheetsPerBundle && sheetsPerBundle > 0
@@ -628,10 +635,7 @@ const calculateTechnicalSheet = (
 
 const toPaperboardConfigInput = (
   input: PaperboardFormInput,
-): PaperboardConfigInput => {
-  const { quality: _quality, ...paperboardInput } = input;
-  return paperboardInput;
-};
+): PaperboardConfigInput => input;
 
 const normalizeDateOnly = (value: string | null | undefined) => {
   if (!value || typeof value !== "string") {
@@ -1426,8 +1430,12 @@ const BudgetsPage = () => {
     length: 0,
     width: 0,
     height: 0,
+    quality: "CMCBC",
     gramatura: 0,
     quantity: 0,
+    pricePerKg: PAPERBOARD_PRICE_PER_KG,
+    taxApplied: false,
+    taxPercentage: DEFAULT_TAX_PERCENTAGE,
     sheetsPerBundle: undefined,
     sheetUnitCost: undefined,
     cuttingCostPerKg: undefined,
@@ -1453,6 +1461,12 @@ const BudgetsPage = () => {
   const [detailNewItem, setDetailNewItem] = useState(createEmptyMaterialInput);
   // CLA mode for creation
   const [createUseCla, setCreateUseCla] = useState(false);
+  const [isEditingCreateClaTax, setIsEditingCreateClaTax] = useState(false);
+  const [createClaTaxPercentageDraft, setCreateClaTaxPercentageDraft] =
+    useState("");
+  const [isEditingDetailClaTax, setIsEditingDetailClaTax] = useState(false);
+  const [detailClaTaxPercentageDraft, setDetailClaTaxPercentageDraft] =
+    useState("");
   const [showBoletoPicker, setShowBoletoPicker] = useState(false);
   const [boletoDays, setBoletoDays] = useState(30);
   const [boletoInstallments, setBoletoInstallments] = useState(1);
@@ -1463,6 +1477,9 @@ const BudgetsPage = () => {
     gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
     quantity: 0,
     quality: "CMCBC",
+    pricePerKg: PAPERBOARD_PRICE_PER_KG,
+    taxApplied: false,
+    taxPercentage: DEFAULT_TAX_PERCENTAGE,
     sheetsPerBundle: undefined,
     sheetUnitCost: undefined,
     cuttingCostPerKg: undefined,
@@ -2532,9 +2549,57 @@ const BudgetsPage = () => {
     Number(form.costsApplicableValue) || 0,
   );
 
+  const createClaTaxMultiplier = createClaForm.taxApplied
+    ? 1 + (createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE) / 100
+    : 1;
+
+  const toggleCreateClaTax = () =>
+    setCreateClaForm((f) => ({ ...f, taxApplied: !f.taxApplied }));
+  const handleEditCreateClaTax = () => {
+    setCreateClaTaxPercentageDraft(
+      String(createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE),
+    );
+    setIsEditingCreateClaTax(true);
+  };
+  const handleCancelEditCreateClaTax = () => {
+    setIsEditingCreateClaTax(false);
+    setCreateClaTaxPercentageDraft("");
+  };
+  const handleSaveCreateClaTax = () => {
+    const value = Number(createClaTaxPercentageDraft);
+    if (!Number.isFinite(value) || value < 0) {
+      return;
+    }
+    setCreateClaForm((f) => ({ ...f, taxPercentage: value }));
+    setIsEditingCreateClaTax(false);
+  };
+
+  const toggleDetailClaTax = () =>
+    setPaperboardForm((f) => ({ ...f, taxApplied: !f.taxApplied }));
+  const handleEditDetailClaTax = () => {
+    setDetailClaTaxPercentageDraft(
+      String(paperboardForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE),
+    );
+    setIsEditingDetailClaTax(true);
+  };
+  const handleCancelEditDetailClaTax = () => {
+    setIsEditingDetailClaTax(false);
+    setDetailClaTaxPercentageDraft("");
+  };
+  const handleSaveDetailClaTax = () => {
+    const value = Number(detailClaTaxPercentageDraft);
+    if (!Number.isFinite(value) || value < 0) {
+      return;
+    }
+    setPaperboardForm((f) => ({ ...f, taxPercentage: value }));
+    setIsEditingDetailClaTax(false);
+  };
+
   const createBaseTotalForMargin =
     createUseCla && createClaPreview
-      ? createClaPreview.suggestedPrice * (createClaForm.quantity || 1)
+      ? createClaPreview.suggestedPrice *
+        (createClaForm.quantity || 1) *
+        createClaTaxMultiplier
       : materialCost;
   const totalCostWithExpenses = createBaseTotalForMargin;
   const profitValueWithExpenses = createUseCla
@@ -2562,9 +2627,14 @@ const BudgetsPage = () => {
   );
   const detailMarginDecimal = detailMarginPercentage / 100;
   const paperboardPreview = calculatePaperboardPreview(paperboardForm);
+  const detailClaTaxMultiplier = paperboardForm.taxApplied
+    ? 1 + (paperboardForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE) / 100
+    : 1;
   const detailPaperboardTotal =
     paperboardConfig && paperboardPreview
-      ? paperboardPreview.suggestedPrice * (paperboardForm.quantity || 1)
+      ? paperboardPreview.suggestedPrice *
+        (paperboardForm.quantity || 1) *
+        detailClaTaxMultiplier
       : null;
   const detailBaseTotalForMargin =
     detailPaperboardTotal ?? detailMaterialCost;
@@ -2586,7 +2656,7 @@ const BudgetsPage = () => {
   const detailFinalPriceDisplay = detailPersistedFinalPrice;
   const detailClaMarginDisplay =
     (paperboardPreview?.estimatedCost ?? 0) > 0
-      ? (((paperboardPreview?.suggestedPrice ?? 0) -
+      ? (((paperboardPreview?.suggestedPrice ?? 0) * detailClaTaxMultiplier -
           (paperboardPreview?.estimatedCost ?? 0)) /
           (paperboardPreview?.estimatedCost ?? 1)) *
         100
@@ -2636,6 +2706,9 @@ const BudgetsPage = () => {
       gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
       quantity: 0,
       quality: "CMCBC",
+      pricePerKg: PAPERBOARD_PRICE_PER_KG,
+      taxApplied: false,
+      taxPercentage: DEFAULT_TAX_PERCENTAGE,
       sheetsPerBundle: undefined,
       sheetUnitCost: undefined,
       cuttingCostPerKg: undefined,
@@ -2648,6 +2721,8 @@ const BudgetsPage = () => {
       clicheCost: undefined,
       clichePrice: undefined,
     });
+    setIsEditingCreateClaTax(false);
+    setCreateClaTaxPercentageDraft("");
     setPendingStatusChange((current) =>
       current?.scope === "create" ? null : current,
     );
@@ -2905,6 +2980,8 @@ const BudgetsPage = () => {
     setPaperboardConfig(null);
     setIsPaperboardSectionOpen(false);
     setPaperboardError("");
+    setIsEditingDetailClaTax(false);
+    setDetailClaTaxPercentageDraft("");
   };
 
   const loadPaperboardConfig = async (budgetId: string) => {
@@ -2918,8 +2995,12 @@ const BudgetsPage = () => {
           length: config.length,
           width: config.width,
           height: config.height,
+          quality: config.quality,
           gramatura: config.gramatura,
           quantity: config.quantity,
+          pricePerKg: config.pricePerKg,
+          taxApplied: config.taxApplied,
+          taxPercentage: config.taxPercentage,
           sheetsPerBundle: config.sheetsPerBundle ?? undefined,
           sheetUnitCost: config.sheetUnitCost ?? undefined,
           cuttingCostPerKg: config.cuttingCostPerKg ?? undefined,
@@ -2937,8 +3018,12 @@ const BudgetsPage = () => {
           length: 0,
           width: 0,
           height: 0,
+          quality: "CMCBC",
           gramatura: 0,
           quantity: 0,
+          pricePerKg: PAPERBOARD_PRICE_PER_KG,
+          taxApplied: false,
+          taxPercentage: DEFAULT_TAX_PERCENTAGE,
           sheetsPerBundle: undefined,
           sheetUnitCost: undefined,
           cuttingCostPerKg: undefined,
@@ -2979,21 +3064,14 @@ const BudgetsPage = () => {
     setIsSavingPaperboard(true);
     setPaperboardError("");
     try {
-      const nextPreview = calculatePaperboardPreview(paperboardForm);
       const saved = await upsertPaperboardConfig(
         selectedBudget.id,
         toPaperboardConfigInput(paperboardForm),
       );
       setPaperboardConfig(saved);
-      if (nextPreview) {
-        const claTotalPrice =
-          nextPreview.suggestedPrice * (paperboardForm.quantity || 1);
-        await updateBudget(selectedBudget.id, {
-          totalPrice: claTotalPrice,
-          finalPrice: claTotalPrice,
-          profitMargin: 0,
-        });
-      }
+      // O preço final e a margem do orçamento já são recalculados pelo
+      // backend (mesma fórmula da Cotação Rápida, com imposto se aplicado)
+      // ao salvar a configuração de papelão — basta recarregar o orçamento.
       const refreshedBudget = mapBudgetFromApi(
         await getBudgetById(selectedBudget.id),
         clientsCatalog,
@@ -3397,8 +3475,9 @@ const BudgetsPage = () => {
         }))
         .find(({ product }) => product?.isPaperboardMaterial);
       const inferredQuality =
-        config?.gramatura === PAPERBOARD_QUALITY_GRAMMAGE.CMCB ||
-        paperboardItem?.product?.quality === "CMCB"
+        config?.quality === "CMCB" ||
+        (!config &&
+          (paperboardItem?.product?.quality === "CMCB"))
           ? "CMCB"
           : "CMCBC";
       const inferredQuantity =
@@ -5028,9 +5107,60 @@ const BudgetsPage = () => {
               {/* ── MODO CLA ── */}
               {createUseCla && (
                 <div className="space-y-3 border border-border rounded p-3 bg-secondary/10">
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-                    Dimensões da caixa (mm)
-                  </p>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                      Dimensões da caixa (mm)
+                    </p>
+                    {isEditingCreateClaTax ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          autoFocus
+                          value={createClaTaxPercentageDraft}
+                          onChange={(e) =>
+                            setCreateClaTaxPercentageDraft(e.target.value)
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveCreateClaTax();
+                            if (e.key === "Escape")
+                              handleCancelEditCreateClaTax();
+                          }}
+                          className="w-16 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          %
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleSaveCreateClaTax}
+                          title="Salvar"
+                          className="p-1 rounded hover:bg-green-500/10 text-green-600"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEditCreateClaTax}
+                          title="Cancelar"
+                          className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleEditCreateClaTax}
+                        title="Editar porcentagem de imposto"
+                        className="flex items-center gap-1.5 text-xs font-bold border border-border px-2.5 py-1 rounded-lg hover:bg-accent"
+                      >
+                        <Pencil className="h-3 w-3" /> Imposto{" "}
+                        {createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 gap-3">
                     <FormField
                       label="Comprimento (C)"
@@ -5072,7 +5202,7 @@ const BudgetsPage = () => {
                       }
                     />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <FormField
                       label="Qualidade"
                       as="select"
@@ -5107,6 +5237,19 @@ const BudgetsPage = () => {
                       }
                     />
                     <FormField
+                      label="Preço por kg (R$)"
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={createClaForm.pricePerKg || ""}
+                      onChange={(e) =>
+                        setCreateClaForm((f) => ({
+                          ...f,
+                          pricePerKg: Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <FormField
                       label="Quantidade"
                       type="number"
                       min={1}
@@ -5120,6 +5263,16 @@ const BudgetsPage = () => {
                       }
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleCreateClaTax}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border border-orange-500 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                  >
+                    {createClaForm.taxApplied
+                      ? "Aplicado imposto (clique para remover)"
+                      : `Adicionar imposto (${createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%)`}
+                  </button>
 
                   {/* Preview CLA */}
                   {createClaPreview ? (
@@ -5152,7 +5305,10 @@ const BudgetsPage = () => {
                           Preço unit.
                         </p>
                         <p className="font-bold text-sm text-green-600">
-                          {formatCurrency(createClaPreview.suggestedPrice)}
+                          {formatCurrency(
+                            createClaPreview.suggestedPrice *
+                              createClaTaxMultiplier,
+                          )}
                         </p>
                       </div>
                       <div className="text-center">
@@ -5162,7 +5318,8 @@ const BudgetsPage = () => {
                         <p className="font-bold text-sm">
                           {formatCurrency(
                             createClaPreview.suggestedPrice *
-                              (createClaForm.quantity || 1),
+                              (createClaForm.quantity || 1) *
+                              createClaTaxMultiplier,
                           )}
                         </p>
                       </div>
@@ -5178,6 +5335,12 @@ const BudgetsPage = () => {
                   ) : (
                     <p className="text-xs text-muted-foreground">
                       Preencha C, L, A, qualidade e quantidade para ver o valor.
+                    </p>
+                  )}
+                  {createClaPreview && createClaForm.taxApplied && (
+                    <p className="text-[11px] text-muted-foreground">
+                      * Valores já incluem imposto de{" "}
+                      {createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%.
                     </p>
                   )}
                 </div>
@@ -5894,9 +6057,21 @@ const BudgetsPage = () => {
                           </p>
                           <p>
                             <span className="text-muted-foreground">
+                              Qualidade:
+                            </span>{" "}
+                            {paperboardConfig.quality}
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
                               Gramatura:
                             </span>{" "}
                             {paperboardConfig.gramatura} g/m²
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">
+                              Preço por kg:
+                            </span>{" "}
+                            {formatCurrency(paperboardConfig.pricePerKg)}
                           </p>
                           <p>
                             <span className="text-muted-foreground">
@@ -5904,6 +6079,15 @@ const BudgetsPage = () => {
                             </span>{" "}
                             {paperboardConfig.quantity}
                           </p>
+                          {paperboardConfig.taxApplied && (
+                            <p>
+                              <span className="text-muted-foreground">
+                                Imposto:
+                              </span>{" "}
+                              {paperboardConfig.taxPercentage}% (incluso no
+                              preço sugerido)
+                            </p>
+                          )}
                           {paperboardConfig.estimatedCost != null && (
                             <p>
                               <span className="text-muted-foreground">
@@ -6006,6 +6190,26 @@ const BudgetsPage = () => {
                           }
                         />
                         <FormField
+                          label="Qualidade"
+                          as="select"
+                          value={paperboardForm.quality || "CMCBC"}
+                          options={[
+                            { value: "CMCB", label: "CMCB" },
+                            { value: "CMCBC", label: "CMCBC" },
+                          ]}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => {
+                              const quality =
+                                e.target.value === "CMCB" ? "CMCB" : "CMCBC";
+                              return {
+                                ...f,
+                                quality,
+                                gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
+                              };
+                            })
+                          }
+                        />
+                        <FormField
                           label="Gramatura (g/m²)"
                           type="number"
                           min={0}
@@ -6015,6 +6219,19 @@ const BudgetsPage = () => {
                             setPaperboardForm((f) => ({
                               ...f,
                               gramatura: Number(e.target.value),
+                            }))
+                          }
+                        />
+                        <FormField
+                          label="Preço por kg (R$)"
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={paperboardForm.pricePerKg ?? ""}
+                          onChange={(e) =>
+                            setPaperboardForm((f) => ({
+                              ...f,
+                              pricePerKg: Number(e.target.value),
                             }))
                           }
                         />
@@ -6205,6 +6422,67 @@ const BudgetsPage = () => {
                         </div>
                       )}
 
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={toggleDetailClaTax}
+                          className="flex-1 min-w-[200px] flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border border-orange-500 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                        >
+                          {paperboardForm.taxApplied
+                            ? "Aplicado imposto (clique para remover)"
+                            : `Adicionar imposto (${paperboardForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%)`}
+                        </button>
+                        {isEditingDetailClaTax ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.1"
+                              autoFocus
+                              value={detailClaTaxPercentageDraft}
+                              onChange={(e) =>
+                                setDetailClaTaxPercentageDraft(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter")
+                                  handleSaveDetailClaTax();
+                                if (e.key === "Escape")
+                                  handleCancelEditDetailClaTax();
+                              }}
+                              className="w-16 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              %
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleSaveDetailClaTax}
+                              title="Salvar"
+                              className="p-1 rounded hover:bg-green-500/10 text-green-600"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEditDetailClaTax}
+                              title="Cancelar"
+                              className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleEditDetailClaTax}
+                            title="Editar porcentagem de imposto"
+                            className="flex items-center gap-1.5 text-xs font-bold border border-border px-2.5 py-1 rounded-lg hover:bg-accent"
+                          >
+                            <Pencil className="h-3 w-3" /> Editar %
+                          </button>
+                        )}
+                      </div>
+
                       {paperboardPreview && (
                         <div className="rounded border border-border bg-secondary/20 p-3 text-sm space-y-1">
                           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
@@ -6240,8 +6518,20 @@ const BudgetsPage = () => {
                               Preço sugerido:
                             </span>{" "}
                             <strong>
-                              {formatCurrency(paperboardPreview.suggestedPrice)}
+                              {formatCurrency(
+                                paperboardPreview.suggestedPrice *
+                                  detailClaTaxMultiplier,
+                              )}
                             </strong>
+                            {paperboardForm.taxApplied && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {" "}
+                                (imposto de{" "}
+                                {paperboardForm.taxPercentage ??
+                                  DEFAULT_TAX_PERCENTAGE}
+                                % incluso)
+                              </span>
+                            )}
                           </p>
                           <p>
                             <span className="text-muted-foreground">

@@ -8,6 +8,10 @@ export interface PaperboardConfig {
   height: number;
   gramatura: number;
   quantity: number;
+  quality: "CMCB" | "CMCBC";
+  pricePerKg: number;
+  taxApplied: boolean;
+  taxPercentage: number;
   sheetsPerBundle: number | null;
   sheetUnitCost: number | null;
   cuttingCostPerKg: number | null;
@@ -41,6 +45,10 @@ export interface PaperboardConfigInput {
   height: number;
   gramatura: number;
   quantity: number;
+  quality?: "CMCB" | "CMCBC";
+  pricePerKg?: number;
+  taxApplied?: boolean;
+  taxPercentage?: number;
   sheetsPerBundle?: number | null;
   sheetUnitCost?: number | null;
   cuttingCostPerKg?: number | null;
@@ -95,6 +103,10 @@ const normalize = (raw: unknown): PaperboardConfig | null => {
     height: toNum(item.height),
     gramatura: toNum(item.gramatura),
     quantity: toNum(item.quantity),
+    quality: item.quality === "CMCB" ? "CMCB" : "CMCBC",
+    pricePerKg: toNum(item.pricePerKg, 14),
+    taxApplied: toBool(item.taxApplied),
+    taxPercentage: toNum(item.taxPercentage, 28),
     sheetsPerBundle: toNumOrNull(item.sheetsPerBundle),
     sheetUnitCost: toNumOrNull(item.sheetUnitCost),
     cuttingCostPerKg: toNumOrNull(item.cuttingCostPerKg),

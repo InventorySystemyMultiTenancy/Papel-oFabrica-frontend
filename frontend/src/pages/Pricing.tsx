@@ -216,9 +216,6 @@ export default function PricingPage() {
       );
       spec("Qualidade:", result.input.quality, colX[1]);
       y += 6;
-      spec("Gramatura:", `${result.input.gramatura} g/m²`, colX[0]);
-      spec("Preço por kg:", formatCurrency(result.input.precoPorKg), colX[1]);
-      y += 6;
       spec(
         "Formato impressora:",
         `${formatNum(result.blankWidthMm)} mm`,
