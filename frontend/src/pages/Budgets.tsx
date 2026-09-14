@@ -1011,6 +1011,29 @@ const createEmptyMaterialInput = (mode: MaterialInputMode = "existing") => ({
   height: 0,
 });
 
+const createEmptyClaForm = (): PaperboardFormInput => ({
+  length: 0,
+  width: 0,
+  height: 0,
+  gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
+  quantity: 0,
+  quality: "CMCBC",
+  pricePerKg: PAPERBOARD_PRICE_PER_KG,
+  taxApplied: false,
+  taxPercentage: DEFAULT_TAX_PERCENTAGE,
+  sheetsPerBundle: undefined,
+  sheetUnitCost: undefined,
+  cuttingCostPerKg: undefined,
+  creasingCostPerKg: undefined,
+  lossPercentage: 0,
+  markupPercentage: 35,
+  usesFullSheet: false,
+  outsourcedCut: false,
+  isFirstPurchase: false,
+  clicheCost: undefined,
+  clichePrice: undefined,
+});
+
 const resolveMaterialInputUnitPrice = (
   item: ReturnType<typeof createEmptyMaterialInput>,
   product?: Product,
@@ -1464,34 +1487,26 @@ const BudgetsPage = () => {
   const [isEditingCreateClaTax, setIsEditingCreateClaTax] = useState(false);
   const [createClaTaxPercentageDraft, setCreateClaTaxPercentageDraft] =
     useState("");
+  const [createLastClaConfig, setCreateLastClaConfig] =
+    useState<PaperboardFormInput | null>(null);
   const [isEditingDetailClaTax, setIsEditingDetailClaTax] = useState(false);
   const [detailClaTaxPercentageDraft, setDetailClaTaxPercentageDraft] =
     useState("");
   const [showBoletoPicker, setShowBoletoPicker] = useState(false);
   const [boletoDays, setBoletoDays] = useState(30);
   const [boletoInstallments, setBoletoInstallments] = useState(1);
-  const [createClaForm, setCreateClaForm] = useState<PaperboardFormInput>({
-    length: 0,
-    width: 0,
-    height: 0,
-    gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
-    quantity: 0,
-    quality: "CMCBC",
-    pricePerKg: PAPERBOARD_PRICE_PER_KG,
-    taxApplied: false,
-    taxPercentage: DEFAULT_TAX_PERCENTAGE,
-    sheetsPerBundle: undefined,
-    sheetUnitCost: undefined,
-    cuttingCostPerKg: undefined,
-    creasingCostPerKg: undefined,
-    lossPercentage: 0,
-    markupPercentage: 35,
-    usesFullSheet: false,
-    outsourcedCut: false,
-    isFirstPurchase: false,
-    clicheCost: undefined,
-    clichePrice: undefined,
-  });
+  const [createClaForm, setCreateClaForm] = useState<PaperboardFormInput>(
+    createEmptyClaForm(),
+  );
+  const [detailUseCla, setDetailUseCla] = useState(false);
+  const [detailQuickClaForm, setDetailQuickClaForm] =
+    useState<PaperboardFormInput>(createEmptyClaForm());
+  const [isEditingDetailQuickClaTax, setIsEditingDetailQuickClaTax] =
+    useState(false);
+  const [
+    detailQuickClaTaxPercentageDraft,
+    setDetailQuickClaTaxPercentageDraft,
+  ] = useState("");
 
   const [contractForm, setContractForm] = useState<ContractFormState>({
     contratanteName: "",
@@ -1980,6 +1995,39 @@ const BudgetsPage = () => {
     setNewItem(createEmptyMaterialInput(newItem.mode));
   };
 
+  const addCreateClaItem = () => {
+    if (!createClaPreview) {
+      setFormError(
+        "Preencha os campos do Cálculo CLA (C, L, A, qualidade e quantidade).",
+      );
+      return;
+    }
+
+    const quantity = Number(createClaForm.quantity);
+    const unitPrice = createClaPreview.suggestedPrice * createClaTaxMultiplier;
+    const quality = createClaForm.quality ?? "CMCBC";
+    const productName = `Caixa ${createClaForm.length}x${createClaForm.width}x${createClaForm.height}mm ${quality}`;
+
+    const item: BudgetItemRow = {
+      productName,
+      quantity,
+      unit: "un",
+      unitPrice,
+      subtotal: unitPrice * quantity,
+    };
+
+    setForm((current) => ({ ...current, items: [...current.items, item] }));
+    setCreateLastClaConfig({ ...createClaForm });
+    setFormError("");
+    setCreateClaForm((f) => ({
+      ...f,
+      length: 0,
+      width: 0,
+      height: 0,
+      quantity: 0,
+    }));
+  };
+
   const addDetailItem = () => {
     if (!selectedBudget) {
       return;
@@ -2043,6 +2091,53 @@ const BudgetsPage = () => {
     setDetailForm((current) => ({ ...current, items: nextItems }));
     setDetailError("");
     setDetailNewItem(createEmptyMaterialInput(detailNewItem.mode));
+  };
+
+  const addDetailClaItem = () => {
+    if (!selectedBudget) {
+      return;
+    }
+
+    if (!detailQuickClaPreview) {
+      setDetailError(
+        "Preencha os campos do Cálculo CLA (C, L, A, qualidade e quantidade).",
+      );
+      return;
+    }
+
+    const quantity = Number(detailQuickClaForm.quantity);
+    const unitPrice =
+      detailQuickClaPreview.suggestedPrice * detailQuickClaTaxMultiplier;
+    const quality = detailQuickClaForm.quality ?? "CMCBC";
+    const productName = `Caixa ${detailQuickClaForm.length}x${detailQuickClaForm.width}x${detailQuickClaForm.height}mm ${quality}`;
+
+    const item: BudgetItemRow = {
+      productName,
+      quantity,
+      unit: "un",
+      unitPrice,
+      subtotal: unitPrice * quantity,
+    };
+
+    const nextItems = [...selectedBudget.items, item];
+
+    setSelectedBudget((current) =>
+      current
+        ? {
+            ...current,
+            items: nextItems,
+          }
+        : current,
+    );
+    setDetailForm((current) => ({ ...current, items: nextItems }));
+    setDetailError("");
+    setDetailQuickClaForm((f) => ({
+      ...f,
+      length: 0,
+      width: 0,
+      height: 0,
+      quantity: 0,
+    }));
   };
 
   const removeItem = (idx: number) => {
@@ -2574,6 +2669,32 @@ const BudgetsPage = () => {
     setIsEditingCreateClaTax(false);
   };
 
+  const detailQuickClaPreview = calculatePaperboardPreview(detailQuickClaForm);
+  const detailQuickClaTaxMultiplier = detailQuickClaForm.taxApplied
+    ? 1 + (detailQuickClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE) / 100
+    : 1;
+
+  const toggleDetailQuickClaTax = () =>
+    setDetailQuickClaForm((f) => ({ ...f, taxApplied: !f.taxApplied }));
+  const handleEditDetailQuickClaTax = () => {
+    setDetailQuickClaTaxPercentageDraft(
+      String(detailQuickClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE),
+    );
+    setIsEditingDetailQuickClaTax(true);
+  };
+  const handleCancelEditDetailQuickClaTax = () => {
+    setIsEditingDetailQuickClaTax(false);
+    setDetailQuickClaTaxPercentageDraft("");
+  };
+  const handleSaveDetailQuickClaTax = () => {
+    const value = Number(detailQuickClaTaxPercentageDraft);
+    if (!Number.isFinite(value) || value < 0) {
+      return;
+    }
+    setDetailQuickClaForm((f) => ({ ...f, taxPercentage: value }));
+    setIsEditingDetailQuickClaTax(false);
+  };
+
   const toggleDetailClaTax = () =>
     setPaperboardForm((f) => ({ ...f, taxApplied: !f.taxApplied }));
   const handleEditDetailClaTax = () => {
@@ -2595,16 +2716,8 @@ const BudgetsPage = () => {
     setIsEditingDetailClaTax(false);
   };
 
-  const createBaseTotalForMargin =
-    createUseCla && createClaPreview
-      ? createClaPreview.suggestedPrice *
-        (createClaForm.quantity || 1) *
-        createClaTaxMultiplier
-      : materialCost;
-  const totalCostWithExpenses = createBaseTotalForMargin;
-  const profitValueWithExpenses = createUseCla
-    ? 0
-    : totalCostWithExpenses * marginDecimal;
+  const totalCostWithExpenses = materialCost;
+  const profitValueWithExpenses = totalCostWithExpenses * marginDecimal;
   const finalPriceWithExpenses = totalCostWithExpenses + profitValueWithExpenses;
 
   const detailMaterialCost = (detailForm.items || []).reduce(
@@ -2696,31 +2809,11 @@ const BudgetsPage = () => {
     setApplicableCostsFieldErrors({});
     setNewItem(createEmptyMaterialInput());
     setCreateUseCla(false);
+    setCreateLastClaConfig(null);
     setShowBoletoPicker(false);
     setBoletoDays(30);
     setBoletoInstallments(1);
-    setCreateClaForm({
-      length: 0,
-      width: 0,
-      height: 0,
-      gramatura: PAPERBOARD_QUALITY_GRAMMAGE.CMCBC,
-      quantity: 0,
-      quality: "CMCBC",
-      pricePerKg: PAPERBOARD_PRICE_PER_KG,
-      taxApplied: false,
-      taxPercentage: DEFAULT_TAX_PERCENTAGE,
-      sheetsPerBundle: undefined,
-      sheetUnitCost: undefined,
-      cuttingCostPerKg: undefined,
-      creasingCostPerKg: undefined,
-      lossPercentage: 0,
-      markupPercentage: 35,
-      usesFullSheet: false,
-      outsourcedCut: false,
-      isFirstPurchase: false,
-      clicheCost: undefined,
-      clichePrice: undefined,
-    });
+    setCreateClaForm(createEmptyClaForm());
     setIsEditingCreateClaTax(false);
     setCreateClaTaxPercentageDraft("");
     setPendingStatusChange((current) =>
@@ -2787,13 +2880,6 @@ const BudgetsPage = () => {
       return;
     }
 
-    if (createUseCla && !createClaPreview) {
-      setFormError(
-        "Preencha os campos do Cálculo CLA (C, L, A, qualidade e quantidade).",
-      );
-      return;
-    }
-
     const departmentErrors = validateExpenseDepartments(
       form.expenseDepartments,
     );
@@ -2828,32 +2914,30 @@ const BudgetsPage = () => {
         estimatedDeliveryBusinessDays: parsedEstimatedDeliveryBusinessDays,
         totalPrice: finalPriceWithExpenses,
         finalPrice: finalPriceWithExpenses,
-        profitMargin: createUseCla ? 0 : normalizedProfitMargin,
+        profitMargin: normalizedProfitMargin,
         costsApplicableValue,
         notes: form.notes.trim() ? form.notes.trim() : null,
         paymentTerms: form.paymentTerms.trim()
           ? form.paymentTerms.trim()
           : DEFAULT_BUDGET_PDF_PAYMENT_TERMS,
         status: form.status,
-        materials: createUseCla
-          ? []
-          : form.items.map((item) => {
-              const payloadItem = {
-                productName: item.productName,
-                quantity: item.quantity,
-                unit: item.unit,
-                unitPrice: item.unitPrice,
-              };
+        materials: form.items.map((item) => {
+          const payloadItem = {
+            productName: item.productName,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+          };
 
-              if (item.productId) {
-                return {
-                  ...payloadItem,
-                  productId: item.productId,
-                };
-              }
+          if (item.productId) {
+            return {
+              ...payloadItem,
+              productId: item.productId,
+            };
+          }
 
-              return payloadItem;
-            }),
+          return payloadItem;
+        }),
         expenseDepartments: form.expenseDepartments.map((department) => ({
           expenseDepartmentId: department.expenseDepartmentId,
           name: department.name.trim(),
@@ -2867,12 +2951,13 @@ const BudgetsPage = () => {
         })),
       });
 
-      // Se criou via CLA, salva a configuração de papelão imediatamente
-      if (createUseCla && createClaPreview) {
+      // Se alguma caixa foi calculada via CLA, salva a última config de
+      // papelão usada (referência para a ficha técnica); pode ser editada depois.
+      if (createLastClaConfig) {
         try {
           await upsertPaperboardConfig(
             created.id,
-            toPaperboardConfigInput(createClaForm),
+            toPaperboardConfigInput(createLastClaConfig),
           );
         } catch {
           // não bloqueia o fluxo, pode ser editado depois
@@ -2982,6 +3067,10 @@ const BudgetsPage = () => {
     setPaperboardError("");
     setIsEditingDetailClaTax(false);
     setDetailClaTaxPercentageDraft("");
+    setDetailUseCla(false);
+    setDetailQuickClaForm(createEmptyClaForm());
+    setIsEditingDetailQuickClaTax(false);
+    setDetailQuickClaTaxPercentageDraft("");
   };
 
   const loadPaperboardConfig = async (budgetId: string) => {
@@ -4545,8 +4634,11 @@ const BudgetsPage = () => {
             normalizeName(product.name) === normalizeName(item.productName),
         );
 
-    const stockQuantity = matchingProduct?.stockQuantity ?? 0;
-    return getStockBadge(stockQuantity);
+    if (!matchingProduct) {
+      return null;
+    }
+
+    return getStockBadge(matchingProduct.stockQuantity ?? 0);
   };
 
   const removeDetailItem = (idx: number) => {
@@ -4941,6 +5033,45 @@ const BudgetsPage = () => {
                 Itens / Produto
               </p>
 
+              {form.items.length > 0 && (
+                <div className="border border-border rounded mb-3 divide-y divide-border/50">
+                  {form.items.map((item, i) => {
+                    const stockStatus = resolveItemStockStatus(item);
+
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {item.productName} × {item.quantity} {item.unit}
+                          </span>
+                          {stockStatus && (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${stockStatus.className}`}
+                            >
+                              {stockStatus.label}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs">
+                            R$ {item.subtotal.toFixed(2)}
+                          </span>
+                          <button
+                            onClick={() => removeItem(i)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Toggle: Estoque vs CLA */}
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
@@ -4979,39 +5110,6 @@ const BudgetsPage = () => {
                       >
                         TENTAR NOVAMENTE
                       </button>
-                    </div>
-                  )}
-
-                  {form.items.length > 0 && (
-                    <div className="border border-border rounded mb-3 divide-y divide-border/50">
-                      {form.items.map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>
-                              {item.productName} × {item.quantity} {item.unit}
-                            </span>
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
-                            >
-                              {resolveItemStockStatus(item).label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono text-xs">
-                              R$ {item.subtotal.toFixed(2)}
-                            </span>
-                            <button
-                              onClick={() => removeItem(i)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   )}
 
@@ -5349,6 +5447,15 @@ const BudgetsPage = () => {
                       {createClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%.
                     </p>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={addCreateClaItem}
+                    disabled={!createClaPreview}
+                    className="w-full flex items-center justify-center gap-2 border border-primary/40 text-primary py-2 rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="h-4 w-4" /> Adicionar Caixa ao Orçamento
+                  </button>
                 </div>
               )}
             </div>
@@ -5880,135 +5987,429 @@ const BudgetsPage = () => {
 
                 {selectedBudget.items.length > 0 && (
                   <div className="border border-border rounded mb-3 divide-y divide-border/50">
-                    {selectedBudget.items.map((item, i) => (
-                      <div
-                        key={i}
-                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span>
-                            {item.productName} × {item.quantity} {item.unit}
-                          </span>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${resolveItemStockStatus(item).className}`}
-                          >
-                            {resolveItemStockStatus(item).label}
-                          </span>
-                        </div>
+                    {selectedBudget.items.map((item, i) => {
+                      const stockStatus = resolveItemStockStatus(item);
 
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs">
-                            R$ {item.subtotal.toFixed(2)}
-                          </span>
-                          <button
-                            onClick={() => removeDetailItem(i)}
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                      return (
+                        <div
+                          key={i}
+                          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>
+                              {item.productName} × {item.quantity} {item.unit}
+                            </span>
+                            {stockStatus && (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${stockStatus.className}`}
+                              >
+                                {stockStatus.label}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-xs">
+                              R$ {item.subtotal.toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => removeDetailItem(i)}
+                              className="text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  <div className="flex-1">
-                    <FormField
-                        label="Produto"
-                        as="select"
-                        value={detailNewItem.productId}
-                        onChange={(e) => {
-                          const product = productsCatalog.find(
-                            (item) => item.id === e.target.value,
-                          );
-                          const nextItem = {
-                            ...detailNewItem,
-                            productId: e.target.value,
-                            isPaperboardMaterial:
-                              product?.isPaperboardMaterial ?? false,
-                            length: product?.length ?? 0,
-                            width: product?.width ?? 0,
-                            height: product?.height ?? 0,
-                          };
+                {/* Toggle: Estoque vs CLA */}
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDetailUseCla(false)}
+                    className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                      !detailUseCla
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    Produtos do estoque
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDetailUseCla(true)}
+                    className={`px-3 py-1 text-[11px] font-bold rounded border transition-colors ${
+                      detailUseCla
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    Cálculo CLA (Papelão)
+                  </button>
+                </div>
+
+                {/* ── MODO ESTOQUE ── */}
+                {!detailUseCla && (
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="flex-1">
+                      <FormField
+                          label="Produto"
+                          as="select"
+                          value={detailNewItem.productId}
+                          onChange={(e) => {
+                            const product = productsCatalog.find(
+                              (item) => item.id === e.target.value,
+                            );
+                            const nextItem = {
+                              ...detailNewItem,
+                              productId: e.target.value,
+                              isPaperboardMaterial:
+                                product?.isPaperboardMaterial ?? false,
+                              length: product?.length ?? 0,
+                              width: product?.width ?? 0,
+                              height: product?.height ?? 0,
+                            };
+                            setDetailNewItem({
+                              ...nextItem,
+                              unitPrice:
+                                resolveMaterialInputUnitPrice(
+                                  nextItem,
+                                  product,
+                                ) ?? 0,
+                            });
+                          }}
+                          options={productsCatalog.map((product) => ({
+                            value: product.id,
+                            label: `${product.name} (Saldo: ${product.stockQuantity})`,
+                          }))}
+                        />
+                    </div>
+                    <div className="w-full md:w-24">
+                      <FormField
+                        label="Qtd."
+                        type="number"
+                        min={1}
+                        value={detailNewItem.quantity || ""}
+                        onChange={(e) =>
                           setDetailNewItem({
-                            ...nextItem,
-                            unitPrice:
-                              resolveMaterialInputUnitPrice(
-                                nextItem,
-                                product,
-                              ) ?? 0,
-                          });
-                        }}
-                        options={productsCatalog.map((product) => ({
-                          value: product.id,
-                          label: `${product.name} (Saldo: ${product.stockQuantity})`,
-                        }))}
+                            ...detailNewItem,
+                            quantity: Number(e.target.value),
+                          })
+                        }
                       />
+                    </div>
+                    <div className="w-full md:w-28">
+                      <FormField
+                        label="Unid."
+                        value={detailNewItem.unit}
+                        onChange={(e) =>
+                          setDetailNewItem({
+                            ...detailNewItem,
+                            unit: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="w-full md:w-32">
+                      <FormField
+                        label="Vlr Unit."
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={
+                          detailNewItemUsesPaperboard
+                            ? Number(
+                                (detailNewItemCalculatedUnitPrice ?? 0).toFixed(2),
+                              )
+                            : detailNewItem.unitPrice || ""
+                        }
+                        disabled={detailNewItemUsesPaperboard}
+                        onChange={(e) =>
+                          setDetailNewItem({
+                            ...detailNewItem,
+                            unitPrice: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={addDetailItem}
+                        disabled={
+                          detailNewItem.mode === "existing" &&
+                          (isLoadingProducts || productsCatalog.length === 0)
+                        }
+                        className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {detailNewItem.mode === "existing" && isLoadingProducts
+                          ? "CARREGANDO..."
+                          : "ADICIONAR"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="w-full md:w-24">
-                    <FormField
-                      label="Qtd."
-                      type="number"
-                      min={1}
-                      value={detailNewItem.quantity || ""}
-                      onChange={(e) =>
-                        setDetailNewItem({
-                          ...detailNewItem,
-                          quantity: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="w-full md:w-28">
-                    <FormField
-                      label="Unid."
-                      value={detailNewItem.unit}
-                      onChange={(e) =>
-                        setDetailNewItem({
-                          ...detailNewItem,
-                          unit: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="w-full md:w-32">
-                    <FormField
-                      label="Vlr Unit."
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={
-                        detailNewItemUsesPaperboard
-                          ? Number(
-                              (detailNewItemCalculatedUnitPrice ?? 0).toFixed(2),
-                            )
-                          : detailNewItem.unitPrice || ""
-                      }
-                      disabled={detailNewItemUsesPaperboard}
-                      onChange={(e) =>
-                        setDetailNewItem({
-                          ...detailNewItem,
-                          unitPrice: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="flex items-end">
+                )}
+
+                {/* ── MODO CLA ── */}
+                {detailUseCla && (
+                  <div className="space-y-3 border border-border rounded p-3 bg-secondary/10">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                        Dimensões da caixa (mm)
+                      </p>
+                      {isEditingDetailQuickClaTax ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            autoFocus
+                            value={detailQuickClaTaxPercentageDraft}
+                            onChange={(e) =>
+                              setDetailQuickClaTaxPercentageDraft(
+                                e.target.value,
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                handleSaveDetailQuickClaTax();
+                              if (e.key === "Escape")
+                                handleCancelEditDetailQuickClaTax();
+                            }}
+                            className="w-16 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            %
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleSaveDetailQuickClaTax}
+                            title="Salvar"
+                            className="p-1 rounded hover:bg-green-500/10 text-green-600"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditDetailQuickClaTax}
+                            title="Cancelar"
+                            className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleEditDetailQuickClaTax}
+                          title="Editar porcentagem de imposto"
+                          className="flex items-center gap-1.5 text-xs font-bold border border-border px-2.5 py-1 rounded-lg hover:bg-accent"
+                        >
+                          <Pencil className="h-3 w-3" /> Imposto{" "}
+                          {detailQuickClaForm.taxPercentage ??
+                            DEFAULT_TAX_PERCENTAGE}
+                          %
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <FormField
+                        label="Comprimento (C)"
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={detailQuickClaForm.length || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            length: Number(e.target.value),
+                          }))
+                        }
+                      />
+                      <FormField
+                        label="Largura (L)"
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={detailQuickClaForm.width || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            width: Number(e.target.value),
+                          }))
+                        }
+                      />
+                      <FormField
+                        label="Altura (A)"
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={detailQuickClaForm.height || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            height: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <FormField
+                        label="Qualidade"
+                        as="select"
+                        value={detailQuickClaForm.quality || "CMCBC"}
+                        options={[
+                          { value: "CMCB", label: "CMCB" },
+                          { value: "CMCBC", label: "CMCBC" },
+                        ]}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => {
+                            const quality =
+                              e.target.value === "CMCB" ? "CMCB" : "CMCBC";
+                            return {
+                              ...f,
+                              quality,
+                              gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
+                            };
+                          })
+                        }
+                      />
+                      <FormField
+                        label="Gramatura (g/m²)"
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={detailQuickClaForm.gramatura || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            gramatura: Number(e.target.value),
+                          }))
+                        }
+                      />
+                      <FormField
+                        label="Preço por kg (R$)"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        value={detailQuickClaForm.pricePerKg || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            pricePerKg: Number(e.target.value),
+                          }))
+                        }
+                      />
+                      <FormField
+                        label="Quantidade"
+                        type="number"
+                        min={1}
+                        step="1"
+                        value={detailQuickClaForm.quantity || ""}
+                        onChange={(e) =>
+                          setDetailQuickClaForm((f) => ({
+                            ...f,
+                            quantity: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </div>
+
                     <button
-                      onClick={addDetailItem}
-                      disabled={
-                        detailNewItem.mode === "existing" &&
-                        (isLoadingProducts || productsCatalog.length === 0)
-                      }
-                      className="px-3 py-2 text-xs font-bold rounded border border-border hover:bg-secondary transition-colors text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                      type="button"
+                      onClick={toggleDetailQuickClaTax}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border border-orange-500 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
                     >
-                      {detailNewItem.mode === "existing" && isLoadingProducts
-                        ? "CARREGANDO..."
-                        : "ADICIONAR"}
+                      {detailQuickClaForm.taxApplied
+                        ? "Aplicado imposto (clique para remover)"
+                        : `Adicionar imposto (${detailQuickClaForm.taxPercentage ?? DEFAULT_TAX_PERCENTAGE}%)`}
+                    </button>
+
+                    {detailQuickClaPreview ? (
+                      <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2 border border-border rounded p-2 bg-background">
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                            Peso unit.
+                          </p>
+                          <p className="font-bold text-sm">
+                            {detailQuickClaPreview.unitWeightKg.toLocaleString(
+                              "pt-BR",
+                              {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              },
+                            )}{" "}
+                            kg
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                            Custo unit.
+                          </p>
+                          <p className="font-bold text-sm">
+                            {formatCurrency(detailQuickClaPreview.estimatedCost)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                            Preço unit.
+                          </p>
+                          <p className="font-bold text-sm text-green-600">
+                            {formatCurrency(
+                              detailQuickClaPreview.suggestedPrice *
+                                detailQuickClaTaxMultiplier,
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                            Total ({detailQuickClaForm.quantity} un.)
+                          </p>
+                          <p className="font-bold text-sm">
+                            {formatCurrency(
+                              detailQuickClaPreview.suggestedPrice *
+                                (detailQuickClaForm.quantity || 1) *
+                                detailQuickClaTaxMultiplier,
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                            Folhas
+                          </p>
+                          <p className="font-bold text-sm">
+                            {detailQuickClaPreview.totalSheets}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Preencha C, L, A, qualidade e quantidade para ver o
+                        valor.
+                      </p>
+                    )}
+                    {detailQuickClaPreview && detailQuickClaForm.taxApplied && (
+                      <p className="text-[11px] text-muted-foreground">
+                        * Valores já incluem imposto de{" "}
+                        {detailQuickClaForm.taxPercentage ??
+                          DEFAULT_TAX_PERCENTAGE}
+                        %.
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={addDetailClaItem}
+                      disabled={!detailQuickClaPreview}
+                      className="w-full flex items-center justify-center gap-2 border border-primary/40 text-primary py-2 rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="h-4 w-4" /> Adicionar Caixa ao
+                      Orçamento
                     </button>
                   </div>
-                </div>
+                )}
 
                 {paperboardConfig && (
                   <p className="mt-6 text-[11px] text-muted-foreground text-center">

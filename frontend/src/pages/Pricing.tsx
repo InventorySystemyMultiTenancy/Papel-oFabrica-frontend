@@ -89,13 +89,26 @@ const DEFAULT_INPUT: QuotationInput = {
 
 const DEFAULT_TAX_PERCENTAGE = 28;
 
+interface QuoteBox {
+  id: string;
+  input: QuotationInput;
+}
+
+const createBoxId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `box-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 export default function PricingPage() {
   const { toast } = useToast();
-  const [input, setInput] = useState<QuotationInput>({ ...DEFAULT_INPUT });
+  const [draftInput, setDraftInput] = useState<QuotationInput>({
+    ...DEFAULT_INPUT,
+  });
   const [precoPorKgText, setPrecoPorKgText] = useState(
     String(DEFAULT_INPUT.precoPorKg),
   );
-  const [result, setResult] = useState<QuotationResult | null>(null);
+  const [boxes, setBoxes] = useState<QuoteBox[]>([]);
+  const [results, setResults] = useState<QuotationResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [newQty, setNewQty] = useState("");
   const [taxApplied, setTaxApplied] = useState(false);
@@ -114,28 +127,88 @@ export default function PricingPage() {
     return [...quantities, quantity].sort((a, b) => a - b);
   };
 
-  const handleCalculate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const resetDraftForNextBox = () => {
+    setDraftInput((current) => ({
+      ...current,
+      comprimentoMm: DEFAULT_INPUT.comprimentoMm,
+      larguraMm: DEFAULT_INPUT.larguraMm,
+      alturaMm: DEFAULT_INPUT.alturaMm,
+      quantities: [],
+    }));
+    setNewQty("");
+  };
 
-    const quantities = mergeQuantity(input.quantities, newQty);
+  const addBoxToQuote = () => {
+    const quantities = mergeQuantity(draftInput.quantities, newQty);
 
-    if (quantities.length === 0) {
+    if (
+      !draftInput.comprimentoMm ||
+      !draftInput.larguraMm ||
+      !draftInput.alturaMm
+    ) {
       toast({
-        title: "Adicione pelo menos uma quantidade",
+        title: "Informe dimensões válidas para a caixa",
         variant: "destructive",
       });
       return;
     }
 
-    if (quantities !== input.quantities) {
-      setInput((current) => ({ ...current, quantities }));
-      setNewQty("");
+    if (quantities.length === 0) {
+      toast({
+        title: "Adicione pelo menos uma quantidade para esta caixa",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setBoxes((current) => [
+      ...current,
+      { id: createBoxId(), input: { ...draftInput, quantities } },
+    ]);
+    resetDraftForNextBox();
+    setResults(null);
+  };
+
+  const removeBoxFromQuote = (id: string) => {
+    setBoxes((current) => current.filter((box) => box.id !== id));
+    setResults(null);
+  };
+
+  const handleCalculate = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    let finalBoxes = boxes;
+    const pendingQuantities = mergeQuantity(draftInput.quantities, newQty);
+    const hasPendingDraftBox =
+      draftInput.comprimentoMm > 0 &&
+      draftInput.larguraMm > 0 &&
+      draftInput.alturaMm > 0 &&
+      pendingQuantities.length > 0;
+
+    if (hasPendingDraftBox) {
+      const newBox: QuoteBox = {
+        id: createBoxId(),
+        input: { ...draftInput, quantities: pendingQuantities },
+      };
+      finalBoxes = [...boxes, newBox];
+      setBoxes(finalBoxes);
+      resetDraftForNextBox();
+    }
+
+    if (finalBoxes.length === 0) {
+      toast({
+        title: "Adicione pelo menos uma caixa com quantidade para cotar",
+        variant: "destructive",
+      });
+      return;
     }
 
     setLoading(true);
     try {
-      const res = await calculateQuotation({ ...input, quantities });
-      setResult(res);
+      const computed = await Promise.all(
+        finalBoxes.map((box) => calculateQuotation(box.input)),
+      );
+      setResults(computed);
     } catch (e) {
       toast({
         title: "Erro no cálculo",
@@ -148,7 +221,7 @@ export default function PricingPage() {
   };
 
   const generateQuotationPdf = async () => {
-    if (!result) {
+    if (!results || results.length === 0) {
       return;
     }
 
@@ -158,6 +231,7 @@ export default function PricingPage() {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const PW = pdf.internal.pageSize.getWidth();
+      const PH = pdf.internal.pageSize.getHeight();
       const MX = 14;
       const taxMultiplier = taxApplied ? 1 + taxPercentage / 100 : 1;
       let y = 12;
@@ -199,98 +273,114 @@ export default function PricingPage() {
         { align: "center" },
       );
 
-      y += 12;
-      pdf.setFontSize(10);
-      pdf.setTextColor(15, 23, 42);
+      y += 14;
+
+      const ensureSpace = (neededHeight: number) => {
+        if (y + neededHeight > PH - 18) {
+          pdf.addPage();
+          y = 16;
+        }
+      };
+
       const spec = (label: string, value: string, x: number) => {
         pdf.setFont("helvetica", "bold");
         pdf.text(label, x, y);
         pdf.setFont("helvetica", "normal");
         pdf.text(value, x + pdf.getTextWidth(label) + 4, y);
       };
-      const colX = [MX, MX + 95];
-      spec(
-        "Dimensões (C x L x A):",
-        `${formatNum(result.input.comprimentoMm, 0)} x ${formatNum(result.input.larguraMm, 0)} x ${formatNum(result.input.alturaMm, 0)} mm`,
-        colX[0],
-      );
-      spec("Qualidade:", result.input.quality, colX[1]);
 
-      y += 10;
-      const tableHeaders = [
-        "Quantidade",
-        "Valor Total",
-        "R$/un",
-      ];
-      const colWidths = [45, 55, 45];
-      const tableX = MX;
-      const rowHeight = 7;
+      results.forEach((result, boxIndex) => {
+        const rowHeight = 7;
+        const tableHeaders = ["Quantidade", "Valor Total", "R$/un"];
+        const colWidths = [45, 55, 45];
+        const tableX = MX;
+        const blockHeight =
+          10 + 10 + rowHeight * (result.breakdowns.length + 1) + 8;
 
-      pdf.setFillColor(226, 232, 240);
-      pdf.rect(
-        tableX,
-        y,
-        colWidths.reduce((a, b) => a + b, 0),
-        rowHeight,
-        "F",
-      );
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(9);
-      pdf.setTextColor(15, 23, 42);
-      let headerX = tableX;
-      tableHeaders.forEach((header, index) => {
-        pdf.text(header, headerX + 2, y + 4.8);
-        headerX += colWidths[index];
-      });
+        ensureSpace(blockHeight);
 
-      y += rowHeight;
-      pdf.setFont("helvetica", "normal");
-      result.breakdowns.forEach((breakdown, index) => {
-        if (index % 2 === 1) {
-          pdf.setFillColor(248, 250, 252);
-          pdf.rect(
-            tableX,
-            y,
-            colWidths.reduce((a, b) => a + b, 0),
-            rowHeight,
-            "F",
-          );
-        }
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(`Caixa ${boxIndex + 1}`, MX, y);
+        y += 6;
 
-        let cellX = tableX;
-        const cells = [
-          `${breakdown.quantity.toLocaleString("pt-BR")} un`,
-          formatCurrency(breakdown.totalCost * taxMultiplier),
-          formatCurrency(breakdown.unitSalePrice * taxMultiplier),
-        ];
-        cells.forEach((cell, cellIndex) => {
-          pdf.text(cell, cellX + 2, y + 4.8);
-          cellX += colWidths[cellIndex];
+        pdf.setFontSize(10);
+        const colX = [MX, MX + 95];
+        spec(
+          "Dimensões (C x L x A):",
+          `${formatNum(result.input.comprimentoMm, 0)} x ${formatNum(result.input.larguraMm, 0)} x ${formatNum(result.input.alturaMm, 0)} mm`,
+          colX[0],
+        );
+        spec("Qualidade:", result.input.quality, colX[1]);
+
+        y += 8;
+
+        pdf.setFillColor(226, 232, 240);
+        pdf.rect(
+          tableX,
+          y,
+          colWidths.reduce((a, b) => a + b, 0),
+          rowHeight,
+          "F",
+        );
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(9);
+        pdf.setTextColor(15, 23, 42);
+        let headerX = tableX;
+        tableHeaders.forEach((header, index) => {
+          pdf.text(header, headerX + 2, y + 4.8);
+          headerX += colWidths[index];
         });
-        y += rowHeight;
-      });
 
-      pdf.setDrawColor(203, 213, 225);
-      pdf.rect(
-        tableX,
-        y - rowHeight * (result.breakdowns.length + 1),
-        colWidths.reduce((a, b) => a + b, 0),
-        rowHeight * (result.breakdowns.length + 1),
-        "S",
-      );
+        y += rowHeight;
+        pdf.setFont("helvetica", "normal");
+        result.breakdowns.forEach((breakdown, index) => {
+          if (index % 2 === 1) {
+            pdf.setFillColor(248, 250, 252);
+            pdf.rect(
+              tableX,
+              y,
+              colWidths.reduce((a, b) => a + b, 0),
+              rowHeight,
+              "F",
+            );
+          }
+
+          let cellX = tableX;
+          const cells = [
+            `${breakdown.quantity.toLocaleString("pt-BR")} un`,
+            formatCurrency(breakdown.totalCost * taxMultiplier),
+            formatCurrency(breakdown.unitSalePrice * taxMultiplier),
+          ];
+          cells.forEach((cell, cellIndex) => {
+            pdf.text(cell, cellX + 2, y + 4.8);
+            cellX += colWidths[cellIndex];
+          });
+          y += rowHeight;
+        });
+
+        pdf.setDrawColor(203, 213, 225);
+        pdf.rect(
+          tableX,
+          y - rowHeight * (result.breakdowns.length + 1),
+          colWidths.reduce((a, b) => a + b, 0),
+          rowHeight * (result.breakdowns.length + 1),
+          "S",
+        );
+
+        y += 8;
+      });
 
       if (taxApplied) {
-        y += 6;
+        ensureSpace(10);
         pdf.setFontSize(8.5);
         pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `* Valores já incluem imposto de ${taxPercentage}%.`,
-          MX,
-          y,
-        );
+        pdf.text(`* Valores já incluem imposto de ${taxPercentage}%.`, MX, y);
+        y += 6;
       }
 
-      y += 10;
+      ensureSpace(10);
       pdf.setFontSize(8);
       pdf.setTextColor(148, 163, 184);
       pdf.text(
@@ -312,25 +402,25 @@ export default function PricingPage() {
   };
 
   const addQty = () => {
-    const quantities = mergeQuantity(input.quantities, newQty);
+    const quantities = mergeQuantity(draftInput.quantities, newQty);
 
-    if (quantities !== input.quantities) {
-      setInput((current) => ({ ...current, quantities }));
+    if (quantities !== draftInput.quantities) {
+      setDraftInput((current) => ({ ...current, quantities }));
     }
 
     setNewQty("");
   };
 
   const removeQty = (quantity: number) => {
-    setInput({
-      ...input,
-      quantities: input.quantities.filter((item) => item !== quantity),
+    setDraftInput({
+      ...draftInput,
+      quantities: draftInput.quantities.filter((item) => item !== quantity),
     });
   };
 
   const setQuality = (quality: QuotationInput["quality"]) => {
-    setInput({
-      ...input,
+    setDraftInput({
+      ...draftInput,
       quality,
       gramatura: PAPERBOARD_QUALITY_GRAMMAGE[quality],
       precoPorKg: PAPERBOARD_PRICE_PER_KG,
@@ -373,7 +463,8 @@ export default function PricingPage() {
             <Calculator className="h-6 w-6" /> Cotação Rápida
           </h1>
           <p className="text-sm text-muted-foreground">
-            Calcula o preço da caixa com o mesmo cálculo CLA usado em
+            Calcula o preço de uma ou várias caixas, com quantidades
+            diferentes, na mesma cotação — mesmo cálculo CLA usado em
             orçamentos.
           </p>
         </div>
@@ -444,9 +535,12 @@ export default function PricingPage() {
                       type="number"
                       min={1}
                       className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                      value={input[key] || ""}
+                      value={draftInput[key] || ""}
                       onChange={(e) =>
-                        setInput({ ...input, [key]: num(e.target.value) })
+                        setDraftInput({
+                          ...draftInput,
+                          [key]: num(e.target.value),
+                        })
                       }
                       required
                     />
@@ -463,7 +557,7 @@ export default function PricingPage() {
                 </label>
                 <select
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={input.quality}
+                  value={draftInput.quality}
                   onChange={(e) =>
                     setQuality(e.target.value as QuotationInput["quality"])
                   }
@@ -481,9 +575,12 @@ export default function PricingPage() {
                   type="number"
                   min={1}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={input.gramatura || ""}
+                  value={draftInput.gramatura || ""}
                   onChange={(e) =>
-                    setInput({ ...input, gramatura: num(e.target.value) })
+                    setDraftInput({
+                      ...draftInput,
+                      gramatura: num(e.target.value),
+                    })
                   }
                   required
                 />
@@ -500,7 +597,10 @@ export default function PricingPage() {
                   value={precoPorKgText}
                   onChange={(e) => {
                     setPrecoPorKgText(e.target.value);
-                    setInput({ ...input, precoPorKg: num(e.target.value) });
+                    setDraftInput({
+                      ...draftInput,
+                      precoPorKg: num(e.target.value),
+                    });
                   }}
                   required
                 />
@@ -510,9 +610,9 @@ export default function PricingPage() {
 
           <div className="space-y-4">
             <div className="border border-border rounded-lg p-5 bg-card space-y-3">
-              <h2 className="font-semibold">Quantidades a Cotar</h2>
+              <h2 className="font-semibold">Quantidades desta Caixa</h2>
               <div className="flex flex-wrap gap-2">
-                {input.quantities.map((quantity) => (
+                {draftInput.quantities.map((quantity) => (
                   <span
                     key={quantity}
                     className="flex items-center gap-1 bg-primary/10 text-primary text-sm px-3 py-1 rounded-full"
@@ -552,7 +652,53 @@ export default function PricingPage() {
                   <Plus className="h-4 w-4" /> Adicionar
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={addBoxToQuote}
+                className="w-full flex items-center justify-center gap-2 border border-primary/40 text-primary py-2 rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors"
+              >
+                <Plus className="h-4 w-4" /> Adicionar Caixa à Cotação
+              </button>
             </div>
+
+            {boxes.length > 0 && (
+              <div className="border border-border rounded-lg p-5 bg-card space-y-2">
+                <h2 className="font-semibold">
+                  Caixas na Cotação ({boxes.length})
+                </h2>
+                <div className="space-y-2">
+                  {boxes.map((box, idx) => (
+                    <div
+                      key={box.id}
+                      className="flex items-center justify-between gap-3 border border-border rounded-md px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          Caixa {idx + 1}: {formatNum(box.input.comprimentoMm, 0)}{" "}
+                          x {formatNum(box.input.larguraMm, 0)} x{" "}
+                          {formatNum(box.input.alturaMm, 0)} mm
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {box.input.quality} •{" "}
+                          {box.input.quantities
+                            .map((q) => q.toLocaleString("pt-BR"))
+                            .join(", ")}{" "}
+                          un
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeBoxFromQuote(box.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label={`Remover caixa ${idx + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
@@ -575,11 +721,13 @@ export default function PricingPage() {
           </div>
         </form>
 
-        {result && (
-          <div className="border border-border rounded-lg p-5 bg-card">
-            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        {results && results.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold">Resultado do Cálculo</h2>
+                <h2 className="font-semibold text-lg">
+                  Resultado da Cotação
+                </h2>
                 {taxApplied && (
                   <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
                     Imposto de {taxPercentage}% incluso
@@ -596,92 +744,109 @@ export default function PricingPage() {
                 {isGeneratingPdf ? "Gerando PDF..." : "Gerar PDF"}
               </button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  Formato impressora
-                </p>
-                <p className="font-medium">
-                  {formatNum(result.blankWidthMm)} mm
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  Formato riscador
-                </p>
-                <p className="font-medium">
-                  {formatNum(result.blankHeightMm)} mm
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Gramatura</p>
-                <p className="font-medium">{result.input.gramatura} g/m²</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  Peso por caixa
-                </p>
-                <p className="font-medium">
-                  {formatNum(result.sheetWeightKg, 4)} kg
-                </p>
-              </div>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      Quantidade
-                    </th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      Folhas
-                    </th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      Peso Total
-                    </th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      Valor Total
-                    </th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                      R$/un
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {result.breakdowns.map((breakdown) => {
-                    const taxMultiplier = taxApplied
-                      ? 1 + taxPercentage / 100
-                      : 1;
+            {results.map((result, idx) => (
+              <div
+                key={idx}
+                className="border border-border rounded-lg p-5 bg-card"
+              >
+                <h3 className="font-semibold mb-3">
+                  Caixa {idx + 1}: {formatNum(result.input.comprimentoMm, 0)} x{" "}
+                  {formatNum(result.input.larguraMm, 0)} x{" "}
+                  {formatNum(result.input.alturaMm, 0)} mm
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Formato impressora
+                    </p>
+                    <p className="font-medium">
+                      {formatNum(result.blankWidthMm)} mm
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Formato riscador
+                    </p>
+                    <p className="font-medium">
+                      {formatNum(result.blankHeightMm)} mm
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Gramatura</p>
+                    <p className="font-medium">
+                      {result.input.gramatura} g/m²
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Peso por caixa
+                    </p>
+                    <p className="font-medium">
+                      {formatNum(result.sheetWeightKg, 4)} kg
+                    </p>
+                  </div>
+                </div>
 
-                    return (
-                      <tr
-                        key={breakdown.quantity}
-                        className="hover:bg-muted/30"
-                      >
-                        <td className="px-3 py-2 font-medium">
-                          {breakdown.quantity.toLocaleString("pt-BR")} un
-                        </td>
-                        <td className="px-3 py-2">
-                          {breakdown.sheetsNeeded.toLocaleString("pt-BR")}
-                        </td>
-                        <td className="px-3 py-2">
-                          {formatNum(breakdown.totalWeightKg, 3)} kg
-                        </td>
-                        <td className="px-3 py-2 font-semibold text-primary">
-                          {formatCurrency(breakdown.totalCost * taxMultiplier)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {formatCurrency(
-                            breakdown.unitSalePrice * taxMultiplier,
-                          )}
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                          Quantidade
+                        </th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                          Folhas
+                        </th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                          Peso Total
+                        </th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                          Valor Total
+                        </th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                          R$/un
+                        </th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {result.breakdowns.map((breakdown) => {
+                        const rowTaxMultiplier = taxApplied
+                          ? 1 + taxPercentage / 100
+                          : 1;
+
+                        return (
+                          <tr
+                            key={breakdown.quantity}
+                            className="hover:bg-muted/30"
+                          >
+                            <td className="px-3 py-2 font-medium">
+                              {breakdown.quantity.toLocaleString("pt-BR")} un
+                            </td>
+                            <td className="px-3 py-2">
+                              {breakdown.sheetsNeeded.toLocaleString("pt-BR")}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatNum(breakdown.totalWeightKg, 3)} kg
+                            </td>
+                            <td className="px-3 py-2 font-semibold text-primary">
+                              {formatCurrency(
+                                breakdown.totalCost * rowTaxMultiplier,
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatCurrency(
+                                breakdown.unitSalePrice * rowTaxMultiplier,
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
