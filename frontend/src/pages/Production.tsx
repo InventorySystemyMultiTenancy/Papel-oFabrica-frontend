@@ -714,7 +714,10 @@ const ProductionPage = () => {
       return;
     }
 
-    if (selectedApprovedBudget.category !== "arquitetonico") {
+    // "executivo" (quiosques/contratos) nunca tem config de papelao; para
+    // qualquer outra categoria (incluindo novas categorias criadas pelo
+    // admin, como "Caixa maleta") tentamos carregar normalmente.
+    if (selectedApprovedBudget.category === "executivo") {
       setSelectedBudgetPaperboard(null);
       return;
     }

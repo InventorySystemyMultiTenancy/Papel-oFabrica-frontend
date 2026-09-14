@@ -11,7 +11,9 @@ export type BudgetStatus =
   | "pre_approved"
   | "approved"
   | "rejected";
-export type BudgetCategory = "arquitetonico" | "executivo";
+// A lista de categorias validas e administrada via /budgets/categories
+// (ver listBudgetCategories/createBudgetCategory), nao um enum fixo.
+export type BudgetCategory = string;
 
 export interface BudgetMaterial {
   productId?: string;
@@ -39,6 +41,13 @@ export interface ExpenseDepartmentCatalogItem {
   name: string;
   sector: string;
   defaultAmount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetCategoryCatalogItem {
+  id: string;
+  name: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -485,6 +494,30 @@ const normalizeExpenseDepartmentCatalogItem = (
   };
 };
 
+const normalizeBudgetCategoryCatalogItem = (
+  value: unknown,
+): BudgetCategoryCatalogItem | null => {
+  const item = toRecord(value);
+
+  if (!item) {
+    return null;
+  }
+
+  const id = toStringSafe(item.id, "");
+  const name = toStringSafe(item.name, "").trim();
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    createdAt: toStringSafe(item.createdAt ?? item.created_at, ""),
+    updatedAt: toStringSafe(item.updatedAt ?? item.updated_at, ""),
+  };
+};
+
 const normalizeBudget = (value: unknown): Budget | null => {
   const item = toRecord(value);
 
@@ -841,6 +874,37 @@ export const listExpenseDepartments = async (search?: string) => {
   return parseCollection<unknown>(payload)
     .map(normalizeExpenseDepartmentCatalogItem)
     .filter((item): item is ExpenseDepartmentCatalogItem => Boolean(item));
+};
+
+export const listBudgetCategories = async () => {
+  const payload = await request<unknown>("/budgets/categories");
+  const unwrapped = unwrapDataEnvelope(payload);
+
+  if (Array.isArray(unwrapped)) {
+    return unwrapped
+      .map(normalizeBudgetCategoryCatalogItem)
+      .filter((item): item is BudgetCategoryCatalogItem => Boolean(item));
+  }
+
+  return parseCollection<unknown>(payload)
+    .map(normalizeBudgetCategoryCatalogItem)
+    .filter((item): item is BudgetCategoryCatalogItem => Boolean(item));
+};
+
+export const createBudgetCategory = async (name: string) => {
+  const payload = await request<unknown>("/budgets/categories", {
+    method: "POST",
+    body: JSON.stringify({ name: name.trim() }),
+  });
+  const normalized = normalizeBudgetCategoryCatalogItem(
+    unwrapDataEnvelope(payload),
+  );
+
+  if (!normalized) {
+    throw new Error("Não foi possível criar a categoria.");
+  }
+
+  return normalized;
 };
 
 export const createBudget = async (input: CreateBudgetInput) => {

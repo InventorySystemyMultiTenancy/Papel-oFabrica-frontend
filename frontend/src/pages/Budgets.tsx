@@ -13,9 +13,12 @@ import {
   approveBudget,
   type BudgetExpenseDepartment as ApiBudgetExpenseDepartment,
   createBudget,
+  createBudgetCategory,
+  type BudgetCategoryCatalogItem,
   type ExpenseDepartmentCatalogItem,
   formatApproveBudgetDetailMessage,
   getBudgetById,
+  listBudgetCategories,
   listBudgets,
   listExpenseDepartments,
   updateBudget,
@@ -1414,6 +1417,15 @@ const BudgetsPage = () => {
   ] = useState(false);
   const [expenseDepartmentsCatalogError, setExpenseDepartmentsCatalogError] =
     useState("");
+  const [categoriesCatalog, setCategoriesCatalog] = useState<
+    BudgetCategoryCatalogItem[]
+  >([]);
+  const [categoriesCatalogError, setCategoriesCatalogError] = useState("");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [isAddingCreateCategory, setIsAddingCreateCategory] = useState(false);
+  const [newCreateCategoryName, setNewCreateCategoryName] = useState("");
+  const [isAddingDetailCategory, setIsAddingDetailCategory] = useState(false);
+  const [newDetailCategoryName, setNewDetailCategoryName] = useState("");
   const [expenseDepartmentsSearch, setExpenseDepartmentsSearch] = useState("");
   const [detailExpenseDepartmentsSearch, setDetailExpenseDepartmentsSearch] =
     useState("");
@@ -1569,6 +1581,7 @@ const BudgetsPage = () => {
   useEffect(() => {
     void loadClientsForForms();
     void loadBudgetsFromApi();
+    void loadCategoriesCatalog();
   }, []);
 
   useEffect(() => {
@@ -1640,6 +1653,78 @@ const BudgetsPage = () => {
       );
     } finally {
       setIsLoadingExpenseDepartmentsCatalog(false);
+    }
+  };
+
+  const loadCategoriesCatalog = async () => {
+    setCategoriesCatalogError("");
+
+    try {
+      const categories = await listBudgetCategories();
+      setCategoriesCatalog(categories);
+    } catch (error) {
+      setCategoriesCatalogError(
+        normalizeBudgetError(
+          error,
+          "Nao foi possivel carregar as categorias de orcamento.",
+        ),
+      );
+    }
+  };
+
+  const addCreateCategory = async () => {
+    const name = newCreateCategoryName.trim();
+
+    if (!name) {
+      setFormError("Informe um nome para a nova categoria.");
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    setFormError("");
+
+    try {
+      const created = await createBudgetCategory(name);
+      setCategoriesCatalog((current) =>
+        [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setForm((current) => ({ ...current, category: created.name }));
+      setNewCreateCategoryName("");
+      setIsAddingCreateCategory(false);
+    } catch (error) {
+      setFormError(
+        normalizeBudgetError(error, "Nao foi possivel criar a categoria."),
+      );
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
+  const addDetailCategory = async () => {
+    const name = newDetailCategoryName.trim();
+
+    if (!name) {
+      setDetailError("Informe um nome para a nova categoria.");
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    setDetailError("");
+
+    try {
+      const created = await createBudgetCategory(name);
+      setCategoriesCatalog((current) =>
+        [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setDetailForm((current) => ({ ...current, category: created.name }));
+      setNewDetailCategoryName("");
+      setIsAddingDetailCategory(false);
+    } catch (error) {
+      setDetailError(
+        normalizeBudgetError(error, "Nao foi possivel criar a categoria."),
+      );
+    } finally {
+      setIsCreatingCategory(false);
     }
   };
 
@@ -2816,6 +2901,8 @@ const BudgetsPage = () => {
     setCreateClaForm(createEmptyClaForm());
     setIsEditingCreateClaTax(false);
     setCreateClaTaxPercentageDraft("");
+    setIsAddingCreateCategory(false);
+    setNewCreateCategoryName("");
     setPendingStatusChange((current) =>
       current?.scope === "create" ? null : current,
     );
@@ -3071,6 +3158,8 @@ const BudgetsPage = () => {
     setDetailQuickClaForm(createEmptyClaForm());
     setIsEditingDetailQuickClaTax(false);
     setDetailQuickClaTaxPercentageDraft("");
+    setIsAddingDetailCategory(false);
+    setNewDetailCategoryName("");
   };
 
   const loadPaperboardConfig = async (budgetId: string) => {
@@ -4626,6 +4715,25 @@ const BudgetsPage = () => {
       : client.name,
   }));
 
+  const buildCategorySelectOptions = (currentValue?: string) => {
+    const options = categoriesCatalog.map((category) => ({
+      value: category.name,
+      label: formatCategory(category.name),
+    }));
+
+    if (
+      currentValue &&
+      !options.some((option) => option.value === currentValue)
+    ) {
+      options.push({
+        value: currentValue,
+        label: formatCategory(currentValue),
+      });
+    }
+
+    return options;
+  };
+
   const resolveItemStockStatus = (item: BudgetItemRow) => {
     const matchingProduct = item.productId
       ? productsCatalog.find((product) => product.id === item.productId)
@@ -4818,14 +4926,15 @@ const BudgetsPage = () => {
             }
             options={[
               { value: "all", label: "Todas as categorias" },
-              {
-                value: "arquitetonico",
-                label: formatCategory("arquitetonico"),
-              },
-              { value: "executivo", label: formatCategory("executivo") },
+              ...buildCategorySelectOptions(
+                categoryFilter === "all" ? undefined : categoryFilter,
+              ),
             ]}
           />
         </div>
+        {categoriesCatalogError && (
+          <p className="text-xs text-destructive">{categoriesCatalogError}</p>
+        )}
 
         {requestError && (
           <div className="border border-destructive/40 bg-destructive/10 rounded px-3 py-2 text-sm text-destructive flex items-center justify-between gap-3">
@@ -4888,21 +4997,73 @@ const BudgetsPage = () => {
               }))}
             />
 
-            <FormField
-              label="Categoria do orcamento"
-              as="select"
-              value={form.category}
-              onChange={(e) =>
-                setForm({ ...form, category: e.target.value as BudgetCategory })
-              }
-              options={[
-                {
-                  value: "arquitetonico",
-                  label: formatCategory("arquitetonico"),
-                },
-                { value: "executivo", label: formatCategory("executivo") },
-              ]}
-            />
+            <div className="space-y-1.5">
+              <FormField
+                label="Categoria do orcamento"
+                as="select"
+                value={form.category}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    category: e.target.value as BudgetCategory,
+                  })
+                }
+                options={buildCategorySelectOptions(form.category)}
+              />
+              {isAdmin &&
+                (isAddingCreateCategory ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Nome da nova categoria"
+                      value={newCreateCategoryName}
+                      onChange={(e) =>
+                        setNewCreateCategoryName(e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void addCreateCategory();
+                        }
+                        if (e.key === "Escape") {
+                          setIsAddingCreateCategory(false);
+                          setNewCreateCategoryName("");
+                        }
+                      }}
+                      className="flex-1 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addCreateCategory()}
+                      disabled={isCreatingCategory}
+                      title="Salvar categoria"
+                      className="p-1 rounded hover:bg-green-500/10 text-green-600 disabled:opacity-60"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingCreateCategory(false);
+                        setNewCreateCategoryName("");
+                      }}
+                      title="Cancelar"
+                      className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingCreateCategory(true)}
+                    className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
+                  >
+                    <Plus className="h-3 w-3" /> Nova categoria
+                  </button>
+                ))}
+            </div>
 
             <FormField
               label="Status"
@@ -5715,24 +5876,73 @@ const BudgetsPage = () => {
                 options={detailClientOptions}
               />
 
-              <FormField
-                label="Categoria do orcamento"
-                as="select"
-                value={detailForm.category}
-                onChange={(e) =>
-                  setDetailForm((current) => ({
-                    ...current,
-                    category: e.target.value as BudgetCategory,
-                  }))
-                }
-                options={[
-                  {
-                    value: "arquitetonico",
-                    label: formatCategory("arquitetonico"),
-                  },
-                  { value: "executivo", label: formatCategory("executivo") },
-                ]}
-              />
+              <div className="space-y-1.5">
+                <FormField
+                  label="Categoria do orcamento"
+                  as="select"
+                  value={detailForm.category}
+                  onChange={(e) =>
+                    setDetailForm((current) => ({
+                      ...current,
+                      category: e.target.value as BudgetCategory,
+                    }))
+                  }
+                  options={buildCategorySelectOptions(detailForm.category)}
+                />
+                {isAdmin &&
+                  (isAddingDetailCategory ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Nome da nova categoria"
+                        value={newDetailCategoryName}
+                        onChange={(e) =>
+                          setNewDetailCategoryName(e.target.value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void addDetailCategory();
+                          }
+                          if (e.key === "Escape") {
+                            setIsAddingDetailCategory(false);
+                            setNewDetailCategoryName("");
+                          }
+                        }}
+                        className="flex-1 border border-border rounded-md px-2 py-1 text-xs bg-background"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void addDetailCategory()}
+                        disabled={isCreatingCategory}
+                        title="Salvar categoria"
+                        className="p-1 rounded hover:bg-green-500/10 text-green-600 disabled:opacity-60"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingDetailCategory(false);
+                          setNewDetailCategoryName("");
+                        }}
+                        title="Cancelar"
+                        className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingDetailCategory(true)}
+                      className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
+                    >
+                      <Plus className="h-3 w-3" /> Nova categoria
+                    </button>
+                  ))}
+              </div>
             </div>
 
             {selectedBudget && (
