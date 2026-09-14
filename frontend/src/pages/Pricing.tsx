@@ -215,29 +215,14 @@ export default function PricingPage() {
         colX[0],
       );
       spec("Qualidade:", result.input.quality, colX[1]);
-      y += 6;
-      spec(
-        "Formato impressora:",
-        `${formatNum(result.blankWidthMm)} mm`,
-        colX[0],
-      );
-      spec(
-        "Formato riscador:",
-        `${formatNum(result.blankHeightMm)} mm`,
-        colX[1],
-      );
-      y += 6;
-      spec("Peso por caixa:", `${formatNum(result.sheetWeightKg, 4)} kg`, colX[0]);
 
       y += 10;
       const tableHeaders = [
         "Quantidade",
-        "Folhas",
-        "Peso Total",
         "Valor Total",
         "R$/un",
       ];
-      const colWidths = [30, 25, 30, 40, 30];
+      const colWidths = [45, 55, 45];
       const tableX = MX;
       const rowHeight = 7;
 
@@ -275,8 +260,6 @@ export default function PricingPage() {
         let cellX = tableX;
         const cells = [
           `${breakdown.quantity.toLocaleString("pt-BR")} un`,
-          breakdown.sheetsNeeded.toLocaleString("pt-BR"),
-          `${formatNum(breakdown.totalWeightKg, 3)} kg`,
           formatCurrency(breakdown.totalCost * taxMultiplier),
           formatCurrency(breakdown.unitSalePrice * taxMultiplier),
         ];
@@ -461,7 +444,7 @@ export default function PricingPage() {
                       type="number"
                       min={1}
                       className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                      value={input[key]}
+                      value={input[key] || ""}
                       onChange={(e) =>
                         setInput({ ...input, [key]: num(e.target.value) })
                       }
@@ -498,7 +481,7 @@ export default function PricingPage() {
                   type="number"
                   min={1}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                  value={input.gramatura}
+                  value={input.gramatura || ""}
                   onChange={(e) =>
                     setInput({ ...input, gramatura: num(e.target.value) })
                   }
