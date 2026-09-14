@@ -458,7 +458,7 @@ const ProductsPage = () => {
                 label="Limite para alerta"
                 type="number"
                 min={0}
-                value={form.lowStockAlertQuantity}
+                value={form.lowStockAlertQuantity || ""}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
@@ -473,7 +473,7 @@ const ProductsPage = () => {
                 label="Estoque Inicial"
                 type="number"
                 min={0}
-                value={form.stockQuantity}
+                value={form.stockQuantity || ""}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
@@ -485,7 +485,7 @@ const ProductsPage = () => {
                 label="Limite para alerta"
                 type="number"
                 min={0}
-                value={form.lowStockAlertQuantity}
+                value={form.lowStockAlertQuantity || ""}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,

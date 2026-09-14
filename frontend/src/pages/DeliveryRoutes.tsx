@@ -323,7 +323,7 @@ export default function DeliveryRoutesPage() {
                           type="number"
                           min={1}
                           className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                          value={item.quantity}
+                          value={item.quantity || ""}
                           onChange={(e) =>
                             updateItem(i, "quantity", Number(e.target.value))
                           }

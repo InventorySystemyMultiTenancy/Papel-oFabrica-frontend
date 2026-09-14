@@ -4887,9 +4887,13 @@ const BudgetsPage = () => {
                     type="number"
                     min={1}
                     step="1"
-                    value={boletoDays}
+                    value={boletoDays || ""}
                     onChange={(e) =>
-                      setBoletoDays(Math.max(1, Number(e.target.value) || 1))
+                      setBoletoDays(
+                        e.target.value === ""
+                          ? 0
+                          : Math.max(1, Number(e.target.value) || 1),
+                      )
                     }
                   />
                   <FormField
@@ -4897,10 +4901,12 @@ const BudgetsPage = () => {
                     type="number"
                     min={1}
                     step="1"
-                    value={boletoInstallments}
+                    value={boletoInstallments || ""}
                     onChange={(e) =>
                       setBoletoInstallments(
-                        Math.max(1, Number(e.target.value) || 1),
+                        e.target.value === ""
+                          ? 0
+                          : Math.max(1, Number(e.target.value) || 1),
                       )
                     }
                   />
@@ -4910,8 +4916,8 @@ const BudgetsPage = () => {
                       setForm((current) => ({
                         ...current,
                         paymentTerms: buildBoletoPaymentTerms(
-                          boletoDays,
-                          boletoInstallments,
+                          Math.max(1, boletoDays),
+                          Math.max(1, boletoInstallments),
                         ),
                       }));
                       setShowBoletoPicker(false);
@@ -5048,7 +5054,7 @@ const BudgetsPage = () => {
                         label="Qtd."
                         type="number"
                         min={1}
-                        value={newItem.quantity}
+                        value={newItem.quantity || ""}
                         onChange={(e) =>
                           setNewItem({
                             ...newItem,
@@ -5075,7 +5081,7 @@ const BudgetsPage = () => {
                         value={
                           newItemUsesPaperboard
                             ? Number((newItemCalculatedUnitPrice ?? 0).toFixed(2))
-                            : newItem.unitPrice
+                            : newItem.unitPrice || ""
                         }
                         disabled={newItemUsesPaperboard}
                         onChange={(e) =>
@@ -5354,7 +5360,7 @@ const BudgetsPage = () => {
                 min={0}
                 max={100}
                 step="0.01"
-                value={form.profitMargin}
+                value={form.profitMargin || ""}
                 onChange={(e) =>
                   setForm((current) => ({
                     ...current,
@@ -5788,7 +5794,7 @@ const BudgetsPage = () => {
                 min={0}
                 max={100}
                 step="0.01"
-                value={detailForm.profitMargin}
+                value={detailForm.profitMargin || ""}
                 onChange={(e) =>
                   setDetailForm((current) => ({
                     ...current,
@@ -5805,7 +5811,7 @@ const BudgetsPage = () => {
                 type="number"
                 min={0}
                 step="0.01"
-                value={detailForm.costsApplicableValue ?? 0}
+                value={detailForm.costsApplicableValue ?? ""}
                 onChange={(e) =>
                   setDetailForm((current) => ({
                     ...current,
@@ -5945,7 +5951,7 @@ const BudgetsPage = () => {
                       label="Qtd."
                       type="number"
                       min={1}
-                      value={detailNewItem.quantity}
+                      value={detailNewItem.quantity || ""}
                       onChange={(e) =>
                         setDetailNewItem({
                           ...detailNewItem,
@@ -5977,7 +5983,7 @@ const BudgetsPage = () => {
                           ? Number(
                               (detailNewItemCalculatedUnitPrice ?? 0).toFixed(2),
                             )
-                          : detailNewItem.unitPrice
+                          : detailNewItem.unitPrice || ""
                       }
                       disabled={detailNewItemUsesPaperboard}
                       onChange={(e) =>
@@ -6155,7 +6161,7 @@ const BudgetsPage = () => {
                           type="number"
                           min={0}
                           step="0.1"
-                          value={paperboardForm.length}
+                          value={paperboardForm.length || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -6168,7 +6174,7 @@ const BudgetsPage = () => {
                           type="number"
                           min={0}
                           step="0.1"
-                          value={paperboardForm.width}
+                          value={paperboardForm.width || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -6181,7 +6187,7 @@ const BudgetsPage = () => {
                           type="number"
                           min={0}
                           step="0.1"
-                          value={paperboardForm.height}
+                          value={paperboardForm.height || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -6214,7 +6220,7 @@ const BudgetsPage = () => {
                           type="number"
                           min={0}
                           step="1"
-                          value={paperboardForm.gramatura}
+                          value={paperboardForm.gramatura || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -6240,7 +6246,7 @@ const BudgetsPage = () => {
                           type="number"
                           min={1}
                           step="1"
-                          value={paperboardForm.quantity}
+                          value={paperboardForm.quantity || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -6314,7 +6320,7 @@ const BudgetsPage = () => {
                           min={0}
                           max={100}
                           step="0.1"
-                          value={paperboardForm.lossPercentage ?? 0}
+                          value={paperboardForm.lossPercentage || ""}
                           onChange={(e) =>
                             setPaperboardForm((f) => ({
                               ...f,
@@ -7055,7 +7061,7 @@ const BudgetsPage = () => {
               type="number"
               min={0.1}
               step="0.1"
-              value={contractForm.kioskWidthMeters}
+              value={contractForm.kioskWidthMeters || ""}
               onChange={(e) =>
                 setContractForm((current) => ({
                   ...current,
@@ -7068,7 +7074,7 @@ const BudgetsPage = () => {
               type="number"
               min={0.1}
               step="0.1"
-              value={contractForm.kioskDepthMeters}
+              value={contractForm.kioskDepthMeters || ""}
               onChange={(e) =>
                 setContractForm((current) => ({
                   ...current,

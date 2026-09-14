@@ -499,7 +499,7 @@ const StockPage = () => {
               label="Quantidade"
               type="number"
               min={1}
-              value={form.quantity}
+              value={form.quantity || ""}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,

@@ -1915,7 +1915,7 @@ const ProductionPage = () => {
                     type="number"
                     min={0}
                     step="0.01"
-                    value={form.initialCost}
+                    value={form.initialCost || ""}
                     onChange={(e) =>
                       setForm((current) => ({
                         ...current,
@@ -2092,7 +2092,7 @@ const ProductionPage = () => {
                       type="number"
                       min={1}
                       step="1"
-                      value={newMaterial.quantity}
+                      value={newMaterial.quantity || ""}
                       onChange={(e) =>
                         setNewMaterial((current) => ({
                           ...current,
